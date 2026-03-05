@@ -50,13 +50,26 @@
   function playAudio(text) {
     if (!text) return;
 
+    // Create Audio element immediately to preserve user gesture context
+    const audio = new Audio();
+    
     chrome.runtime.sendMessage({ type: "opendict-tts-request", text }, (response) => {
       if (response && response.audioData) {
-        const audio = new Audio(response.audioData);
-        audio.play().catch((e) => console.error("Audio play error:", e));
+        // Set src and play - user gesture context is preserved
+        audio.src = response.audioData;
+        audio.play().catch((e) => {
+          console.error("Audio play error:", e);
+          // Fallback to browser TTS
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = "en-US";
+          utterance.rate = 0.9;
+          window.speechSynthesis.speak(utterance);
+        });
         return;
       }
 
+      // Fallback if TTS request failed
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "en-US";
