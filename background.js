@@ -306,13 +306,23 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Browser-level shortcut via commands API (most reliable)
 chrome.commands.onCommand.addListener((command) => {
-  if (command === "trigger-translate") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: "opendict-trigger" });
+  if (command !== "trigger-translate") return;
+  chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    const tabId = tabs[0]?.id;
+    if (!tabId) return;
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: "opendict-trigger" });
+    } catch {
+      // Content script not yet injected — inject it first, then retry
+      try {
+        await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+        await chrome.scripting.insertCSS({ target: { tabId }, files: ["content.css"] });
+        await chrome.tabs.sendMessage(tabId, { type: "opendict-trigger" });
+      } catch {
+        // Page doesn't allow scripts (chrome://, edge://, etc.)
       }
-    });
-  }
+    }
+  });
 });
 
 // Handle messages from content script / popup
