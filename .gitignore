@@ -2,3 +2,4 @@
 .venv/
 node_modules/
 *.zip
+opendict.zip
