@@ -35,15 +35,60 @@ document.addEventListener("DOMContentLoaded", () => {
   function normalizeShortcut(input) {
     const raw = String(input || "").trim();
     if (!raw) return DEFAULTS.triggerShortcut;
-    const normalized = raw
+
+    const parts = raw
       .split("+")
       .map((p) => p.trim())
-      .filter(Boolean)
-      .join("+");
-    if (/^(Ctrl|Control|Cmd|Command|Meta)\+T$/i.test(normalized)) {
+      .filter(Boolean);
+
+    let hasAlt = false;
+    let hasCtrl = false;
+    let hasShift = false;
+    let hasMeta = false;
+    let key = "";
+
+    for (const p of parts) {
+      const token = p.toLowerCase();
+      if (token === "alt" || token === "option") hasAlt = true;
+      else if (token === "ctrl" || token === "control") hasCtrl = true;
+      else if (token === "shift") hasShift = true;
+      else if (token === "cmd" || token === "command" || token === "meta") hasMeta = true;
+      else key = p;
+    }
+
+    const keyNorm = String(key).toUpperCase();
+    if (!keyNorm || !/^[A-Z0-9]$/.test(keyNorm)) return DEFAULTS.triggerShortcut;
+    if (!(hasAlt || hasCtrl || hasShift || hasMeta)) return DEFAULTS.triggerShortcut;
+
+    const normalizedParts = [];
+    if (hasCtrl) normalizedParts.push("Ctrl");
+    if (hasAlt) normalizedParts.push("Alt");
+    if (hasShift) normalizedParts.push("Shift");
+    if (hasMeta) normalizedParts.push("Cmd");
+    normalizedParts.push(keyNorm);
+    const normalized = normalizedParts.join("+");
+
+    if (/^(Ctrl\+T|Cmd\+T|Ctrl\+Q|Cmd\+Q)$/i.test(normalized)) {
       return DEFAULTS.triggerShortcut;
     }
+
     return normalized;
+  }
+
+  function buildShortcutFromKeydown(event) {
+    const parts = [];
+    if (event.ctrlKey) parts.push("Ctrl");
+    if (event.altKey) parts.push("Alt");
+    if (event.shiftKey) parts.push("Shift");
+    if (event.metaKey) parts.push("Cmd");
+
+    let key = "";
+    if (/^Key[A-Z]$/.test(event.code)) key = event.code.slice(3);
+    else if (/^Digit[0-9]$/.test(event.code)) key = event.code.slice(5);
+    else if (event.key && /^[a-z0-9]$/i.test(event.key)) key = event.key.toUpperCase();
+
+    if (!key || parts.length === 0) return "";
+    return normalizeShortcut([...parts, key].join("+"));
   }
 
   function showStatus(msg, type) {
@@ -160,6 +205,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const config = getCurrentConfigFromUI();
     saveConfig(config, () => {
       showStatus("Shortcut updated", "success");
+      setTimeout(() => {
+        status.textContent = "";
+      }, 1200);
+    });
+  });
+
+  triggerShortcut.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") return;
+    e.preventDefault();
+    const captured = buildShortcutFromKeydown(e);
+    if (!captured) {
+      showStatus("Use at least one modifier + letter/number", "error");
+      return;
+    }
+    triggerShortcut.value = captured;
+    const config = getCurrentConfigFromUI();
+    saveConfig(config, () => {
+      showStatus(`Shortcut set to ${captured}`, "success");
       setTimeout(() => {
         status.textContent = "";
       }, 1200);

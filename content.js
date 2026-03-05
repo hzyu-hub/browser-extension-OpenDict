@@ -154,11 +154,41 @@
   }
 
   function normalizeShortcut(value) {
-    const normalized = String(value || "Alt+Q").replace(/\s+/g, "");
-    // Browser-reserved combos like Ctrl/Cmd+T often never reach page scripts.
-    if (/^(Ctrl|Control|Cmd|Command|Meta)\+T$/i.test(normalized)) {
+    const raw = String(value || "Alt+Q").replace(/\s+/g, "");
+    const parts = raw.split("+").filter(Boolean);
+
+    let hasAlt = false;
+    let hasCtrl = false;
+    let hasShift = false;
+    let hasMeta = false;
+    let key = "";
+
+    for (const p of parts) {
+      const token = p.toLowerCase();
+      if (token === "alt" || token === "option") hasAlt = true;
+      else if (token === "ctrl" || token === "control") hasCtrl = true;
+      else if (token === "shift") hasShift = true;
+      else if (token === "cmd" || token === "command" || token === "meta") hasMeta = true;
+      else key = p;
+    }
+
+    const keyNorm = String(key).toUpperCase();
+    if (!keyNorm || !/^[A-Z0-9]$/.test(keyNorm)) return "Alt+Q";
+    if (!(hasAlt || hasCtrl || hasShift || hasMeta)) return "Alt+Q";
+
+    const normalizedParts = [];
+    if (hasCtrl) normalizedParts.push("Ctrl");
+    if (hasAlt) normalizedParts.push("Alt");
+    if (hasShift) normalizedParts.push("Shift");
+    if (hasMeta) normalizedParts.push("Cmd");
+    normalizedParts.push(keyNorm);
+    const normalized = normalizedParts.join("+");
+
+    // Browser/system-reserved combos often never reach page scripts.
+    if (/^(Ctrl\+T|Cmd\+T|Ctrl\+Q|Cmd\+Q)$/i.test(normalized)) {
       return "Alt+Q";
     }
+
     return normalized;
   }
 
