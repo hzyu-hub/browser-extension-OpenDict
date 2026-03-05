@@ -146,17 +146,33 @@
 
   function playAudio(text) {
     if (!text) return;
+    const word = text.trim().toLowerCase();
 
+    // Try real dictionary audio first, fall back to SpeechSynthesis
+    const audioSources = [
+      `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`,
+      `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=1`,
+    ];
+
+    let tried = 0;
+    const tryNext = () => {
+      if (tried < audioSources.length) {
+        const audio = new Audio(audioSources[tried++]);
+        audio.volume = 1.0;
+        audio.play().catch(() => tryNext());
+      } else {
+        fallbackSpeak(word);
+      }
+    };
+    tryNext();
+  }
+
+  function fallbackSpeak(text) {
     window.speechSynthesis.cancel();
-    
-    // Wait for voices to load
     const speak = () => {
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = window.speechSynthesis.getVoices();
-      
-      // Select high-quality natural voice
-      // Priority: Google US English Female > Google UK English Female > Samantha (macOS) > any en-US
-      const preferredVoices = [
+      const preferred = [
         voices.find(v => v.name.includes("Google") && v.lang.includes("en") && v.name.includes("Female")),
         voices.find(v => v.name === "Samantha"),
         voices.find(v => v.name === "Karen"),
@@ -164,32 +180,18 @@
         voices.find(v => v.lang === "en-US"),
         voices.find(v => v.lang.startsWith("en"))
       ];
-      
-      const selectedVoice = preferredVoices.find(v => v);
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        utterance.lang = selectedVoice.lang;
-      } else {
-        utterance.lang = "en-US";
-      }
-      
-      // Natural speech parameters
-      utterance.rate = 0.85;    // Slightly slower for clarity
-      utterance.pitch = 1.0;    // Natural pitch
-      utterance.volume = 1.0;   // Full volume
-      
+      const voice = preferred.find(v => v);
+      if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
+      else { utterance.lang = "en-US"; }
+      utterance.rate = 0.9;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
       window.speechSynthesis.speak(utterance);
     };
-    
-    // Ensure voices are loaded
     const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      speak();
-    } else {
-      window.speechSynthesis.onvoiceschanged = () => {
-        speak();
-        window.speechSynthesis.onvoiceschanged = null;
-      };
+    if (voices.length > 0) speak();
+    else {
+      window.speechSynthesis.onvoiceschanged = () => { speak(); window.speechSynthesis.onvoiceschanged = null; };
     }
   }
 
