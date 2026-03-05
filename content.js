@@ -34,16 +34,53 @@
     }, 200);
   }
 
-  function createPopup(x, y) {
+  function createPopup(x, y, selRect) {
     removePopup();
     popup = document.createElement("div");
     popup.id = POPUP_ID;
 
-    const maxX = window.innerWidth - 340;
-    const maxY = window.innerHeight - 240;
-    popup.style.left = `${Math.max(16, Math.min(x, maxX))}px`;
-    popup.style.top = `${Math.max(16, Math.min(y + 14, maxY))}px`;
+    const POPUP_W = 380;
+    const GAP = 8;
+    const MARGIN = 12;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Default: right side of selection, aligned to top of selection
+    let left, top;
+    if (selRect) {
+      left = selRect.right + GAP;
+      top = selRect.top;
+
+      // If overflows right, try left side of selection
+      if (left + POPUP_W + MARGIN > vw) {
+        left = selRect.left - POPUP_W - GAP;
+      }
+      // If overflows left, center horizontally
+      if (left < MARGIN) {
+        left = Math.max(MARGIN, (vw - POPUP_W) / 2);
+      }
+      // Ensure top is within viewport
+      if (top < MARGIN) top = MARGIN;
+    } else {
+      // Fallback to mouse position
+      left = Math.min(x + GAP, vw - POPUP_W - MARGIN);
+      top = Math.max(MARGIN, y);
+      if (left < MARGIN) left = MARGIN;
+    }
+
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
     document.body.appendChild(popup);
+
+    // After render, adjust if popup overflows bottom
+    requestAnimationFrame(() => {
+      if (!popup) return;
+      const rect = popup.getBoundingClientRect();
+      if (rect.bottom > vh - MARGIN) {
+        popup.style.top = `${Math.max(MARGIN, vh - rect.height - MARGIN)}px`;
+      }
+    });
+
     return popup;
   }
 
@@ -96,8 +133,8 @@
     }
   }
 
-  function showLoading(word, x, y) {
-    const el = createPopup(x, y);
+  function showLoading(word, x, y, selRect) {
+    const el = createPopup(x, y, selRect);
     el.innerHTML = `
       <div class="opendict-header">
         <div class="opendict-word-row">
@@ -282,11 +319,21 @@
       context,
       x: e?.clientX ?? lastClickPos.x,
       y: e?.clientY ?? lastClickPos.y,
+      selRect: null,
     };
+
+    // Capture precise selection rectangle
+    try {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        pendingSelection.selRect = { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom };
+      }
+    } catch {}
   }
 
-  function requestTranslate(text, context, x, y) {
-    showLoading(text, x, y);
+  function requestTranslate(text, context, x, y, selRect) {
+    showLoading(text, x, y, selRect);
 
     const timeoutId = setTimeout(() => {
       showResult(text, null, "Request timed out. Check your API settings.");
@@ -351,9 +398,10 @@
     const context = pendingSelection?.context || "";
     const x = pendingSelection?.x ?? lastClickPos.x;
     const y = pendingSelection?.y ?? lastClickPos.y;
+    const selRect = pendingSelection?.selRect || null;
 
     e.preventDefault();
-    requestTranslate(text, context, x, y);
+    requestTranslate(text, context, x, y, selRect);
     pendingSelection = null;
   });
 
@@ -367,7 +415,8 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "opendict-trigger") {
       // Triggered by browser-level commands API shortcut
-      const currentSelection = window.getSelection()?.toString().trim();
+      const sel = window.getSelection();
+      const currentSelection = sel?.toString().trim();
       const text = currentSelection || pendingSelection?.text;
       if (!text || text.length > 200) return;
 
@@ -375,7 +424,18 @@
       const x = pendingSelection?.x ?? lastClickPos.x;
       const y = pendingSelection?.y ?? lastClickPos.y;
 
-      requestTranslate(text, context, x, y);
+      // Get fresh selection rect
+      let selRect = pendingSelection?.selRect || null;
+      try {
+        if (sel && sel.rangeCount > 0) {
+          const rect = sel.getRangeAt(0).getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            selRect = { top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom };
+          }
+        }
+      } catch {}
+
+      requestTranslate(text, context, x, y, selRect);
       pendingSelection = null;
       return;
     }
