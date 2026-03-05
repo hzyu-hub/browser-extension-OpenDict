@@ -295,6 +295,25 @@
     `;
 
     body.classList.remove("opendict-loading");
+
+    // Add save-to-history button for word/phrase results
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "opendict-save-btn";
+    saveBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg><span>Save to wordbook</span>`;
+    saveBtn.addEventListener("click", () => {
+      chrome.runtime.sendMessage({
+        type: "opendict-save-history",
+        text: word,
+        result: data,
+      }, (resp) => {
+        if (resp?.ok) {
+          saveBtn.classList.add("saved");
+          saveBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg><span>Saved</span>`;
+        }
+      });
+    });
+    body.appendChild(saveBtn);
+
     autoCloseTimer = setTimeout(removePopup, 30000);
   }
 

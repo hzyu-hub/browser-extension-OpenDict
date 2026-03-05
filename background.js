@@ -331,14 +331,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       const config = await getConfig();
       const result = await translateText(msg.text, msg.context, config);
-      await saveHistoryRecord(
-        msg.text,
-        result,
-        config.translationSource || "ai",
-      );
       sendResponse(result);
     })();
-    return true; // async response
+    return true;
+  }
+
+  if (msg.type === "opendict-save-history") {
+    (async () => {
+      const config = await getConfig();
+      await saveHistoryRecord(
+        msg.text,
+        msg.result,
+        config.translationSource || "ai",
+      );
+      sendResponse({ ok: true });
+    })();
+    return true;
   }
 
   if (msg.type === "opendict-export-history") {

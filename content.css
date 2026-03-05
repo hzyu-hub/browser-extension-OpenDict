@@ -196,6 +196,44 @@
     font-size: 13px;
 }
 
+.opendict-save-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    padding: 7px 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #475569;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.opendict-save-btn:hover {
+    background: #0ea5e9;
+    color: #fff;
+    border-color: #0ea5e9;
+}
+
+.opendict-save-btn.saved {
+    background: #f0fdf4;
+    color: #16a34a;
+    border-color: #bbf7d0;
+    cursor: default;
+    pointer-events: none;
+}
+
+.opendict-save-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
 @keyframes opendict-fadein {
     from {
         opacity: 0;
