@@ -103,7 +103,6 @@ document.addEventListener("DOMContentLoaded", () => {
       apiKey: apiKey.value.trim(),
       model: model.value || DEFAULTS.model,
       translationSource: translationSource.value || DEFAULTS.translationSource,
-      triggerShortcut: normalizeShortcut(triggerShortcut.value),
     };
   }
 
