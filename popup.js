@@ -122,10 +122,11 @@ document.addEventListener("DOMContentLoaded", () => {
     exportFormat.value = cfg.exportFormat || DEFAULTS.exportFormat;
     applySourceLayout();
 
-    // Show the actual registered shortcut
+    // Show the actual registered shortcut as key caps
     chrome.commands.getAll((cmds) => {
       const cmd = cmds.find(c => c.name === "trigger-translate");
-      triggerShortcutLabel.textContent = cmd?.shortcut || "Ctrl+Q (not set)";
+      const shortcutStr = cmd?.shortcut || "Ctrl+Q";
+      renderKeyCaps(shortcutStr);
     });
   });
 
@@ -204,6 +205,19 @@ document.addEventListener("DOMContentLoaded", () => {
   openShortcutsBtn.addEventListener("click", () => {
     chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
   });
+
+  function renderKeyCaps(shortcutStr) {
+    const keys = shortcutStr.split("+").map(k => k.trim()).filter(Boolean);
+    const symbolMap = {
+      "Ctrl": "Ctrl", "MacCtrl": "^", "Alt": "Alt", "Shift": "Shift",
+      "Command": "\u2318", "Meta": "\u2318"
+    };
+    triggerShortcutLabel.innerHTML = keys.map((k, i) => {
+      const label = symbolMap[k] || k;
+      const sep = i < keys.length - 1 ? '<span class="key-plus">+</span>' : '';
+      return `<span class="key-cap">${label}</span>${sep}`;
+    }).join('');
+  }
 
   exportFormat.addEventListener("change", () => {
     const config = getCurrentConfigFromUI();
