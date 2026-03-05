@@ -50,32 +50,50 @@
   function playAudio(text) {
     if (!text) return;
 
-    // Create Audio element immediately to preserve user gesture context
-    const audio = new Audio();
+    window.speechSynthesis.cancel();
     
-    chrome.runtime.sendMessage({ type: "opendict-tts-request", text }, (response) => {
-      if (response && response.audioData) {
-        // Set src and play - user gesture context is preserved
-        audio.src = response.audioData;
-        audio.play().catch((e) => {
-          console.error("Audio play error:", e);
-          // Fallback to browser TTS
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = "en-US";
-          utterance.rate = 0.9;
-          window.speechSynthesis.speak(utterance);
-        });
-        return;
-      }
-
-      // Fallback if TTS request failed
-      window.speechSynthesis.cancel();
+    // Wait for voices to load
+    const speak = () => {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "en-US";
-      utterance.rate = 0.9;
+      const voices = window.speechSynthesis.getVoices();
+      
+      // Select high-quality natural voice
+      // Priority: Google US English Female > Google UK English Female > Samantha (macOS) > any en-US
+      const preferredVoices = [
+        voices.find(v => v.name.includes("Google") && v.lang.includes("en") && v.name.includes("Female")),
+        voices.find(v => v.name === "Samantha"),
+        voices.find(v => v.name === "Karen"),
+        voices.find(v => v.name.includes("Google") && v.lang.includes("en")),
+        voices.find(v => v.lang === "en-US"),
+        voices.find(v => v.lang.startsWith("en"))
+      ];
+      
+      const selectedVoice = preferredVoices.find(v => v);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        utterance.lang = selectedVoice.lang;
+      } else {
+        utterance.lang = "en-US";
+      }
+      
+      // Natural speech parameters
+      utterance.rate = 0.85;    // Slightly slower for clarity
+      utterance.pitch = 1.0;    // Natural pitch
+      utterance.volume = 1.0;   // Full volume
+      
       window.speechSynthesis.speak(utterance);
-    });
+    };
+    
+    // Ensure voices are loaded
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      speak();
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        speak();
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+    }
   }
 
   function showLoading(word, x, y) {

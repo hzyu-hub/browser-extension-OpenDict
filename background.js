@@ -1,5 +1,5 @@
 // OpenDict Chrome Extension — Background Service Worker
-// Handles translation, TTS, and lookup export
+// Handles translation and lookup export
 
 // Default config
 const DEFAULT_CONFIG = {
@@ -292,23 +292,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse(result);
     })();
     return true; // async response
-  }
-
-  if (msg.type === "opendict-tts-request") {
-    (async () => {
-      try {
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=${encodeURIComponent(msg.text)}`;
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error("TTS fetch failed");
-        const blob = await resp.blob();
-        const reader = new FileReader();
-        reader.onloadend = () => sendResponse({ audioData: reader.result });
-        reader.readAsDataURL(blob);
-      } catch (e) {
-        sendResponse({ error: e.message });
-      }
-    })();
-    return true;
   }
 
   if (msg.type === "opendict-export-history") {
