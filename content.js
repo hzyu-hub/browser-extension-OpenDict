@@ -71,28 +71,25 @@
       let left, top;
 
       if (selRect) {
-        // Popup's bottom-left corner near the selection's top-right corner
-        left = selRect.right + GAP;
-        top = selRect.top - popH - GAP;
+        // Popup bottom edge aligns with selection top edge
+        left = selRect.left;
+        top = selRect.top - popH;
 
-        // If overflows right, flip to left side of selection
-        if (left + POPUP_W > vw - MARGIN) {
-          left = selRect.left - POPUP_W - GAP;
-        }
-        // If overflows left, align with selection left
-        if (left < MARGIN) {
-          left = MARGIN;
-        }
-        // If overflows top, place below selection instead
+        // If overflows top, place below selection
         if (top < MARGIN) {
-          top = selRect.bottom + GAP;
+          top = selRect.bottom;
         }
-      } else {
-        left = x + GAP;
-        top = y - popH - GAP;
-        if (left + POPUP_W > vw - MARGIN) left = x - POPUP_W - GAP;
+        // If overflows right, shift left
+        if (left + POPUP_W > vw - MARGIN) {
+          left = vw - POPUP_W - MARGIN;
+        }
         if (left < MARGIN) left = MARGIN;
-        if (top < MARGIN) top = y + GAP;
+      } else {
+        left = x;
+        top = y - popH;
+        if (left + POPUP_W > vw - MARGIN) left = vw - POPUP_W - MARGIN;
+        if (left < MARGIN) left = MARGIN;
+        if (top < MARGIN) top = y;
       }
 
       // Final clamp: ensure bottom doesn't overflow
