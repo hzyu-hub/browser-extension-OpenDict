@@ -77,6 +77,8 @@
 - **Model**：默认 `gpt-4o-mini`，可点击刷新按钮从 API 自动拉取模型列表
 
 支持的第三方 API 服务（只要兼容 OpenAI 格式）：
+- OpenRouter
+- Google Gemini
 - DeepSeek
 - Moonshot (Kimi)
 - 智谱 (GLM)
