@@ -158,19 +158,23 @@
 
       .model-row {
         display: flex;
-        gap: 4px;
+        position: relative;
         align-items: center;
       }
 
       .model-row select {
         flex: 1;
         min-width: 0;
+        padding-right: 46px;
       }
 
       .icon-btn {
-        flex-shrink: 0;
-        width: 22px;
-        height: 22px;
+        position: absolute;
+        right: 26px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 18px;
+        height: 18px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -180,7 +184,6 @@
         cursor: pointer;
         transition: all 0.15s;
         padding: 0;
-        border-radius: 4px;
       }
 
       .icon-btn:hover {
