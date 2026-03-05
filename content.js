@@ -6,7 +6,7 @@
 
   const POPUP_ID = "opendict-popup";
   let popup = null;
-  let shortcut = "Alt+Q";
+  let shortcut = "Ctrl+Q";
   let pendingSelection = null;
   let lastClickPos = { x: 0, y: 0 };
   let autoCloseTimer = null;
@@ -185,7 +185,7 @@
   }
 
   function normalizeShortcut(value) {
-    const raw = String(value || "Alt+Q").replace(/\s+/g, "");
+    const raw = String(value || "Ctrl+Q").replace(/\s+/g, "");
     const parts = raw.split("+").filter(Boolean);
 
     let hasAlt = false;
@@ -204,8 +204,8 @@
     }
 
     const keyNorm = String(key).toUpperCase();
-    if (!keyNorm || !/^[A-Z0-9]$/.test(keyNorm)) return "Alt+Q";
-    if (!(hasAlt || hasCtrl || hasShift || hasMeta)) return "Alt+Q";
+    if (!keyNorm || !/^[A-Z0-9]$/.test(keyNorm)) return "Ctrl+Q";
+    if (!(hasAlt || hasCtrl || hasShift || hasMeta)) return "Ctrl+Q";
 
     const normalizedParts = [];
     if (hasCtrl) normalizedParts.push("Ctrl");
@@ -216,8 +216,8 @@
     const normalized = normalizedParts.join("+");
 
     // Browser/system-reserved combos often never reach page scripts.
-    if (/^(Ctrl\+T|Cmd\+T|Ctrl\+Q|Cmd\+Q)$/i.test(normalized)) {
-      return "Alt+Q";
+    if (/^(Ctrl\+T|Cmd\+T|Cmd\+Q)$/i.test(normalized)) {
+      return "Ctrl+Q";
     }
 
     return normalized;
@@ -310,7 +310,7 @@
   function loadShortcut() {
     chrome.storage.sync.get("opendict_config", (data) => {
       const cfg = data.opendict_config || {};
-      shortcut = normalizeShortcut(cfg.triggerShortcut || "Alt+Q");
+      shortcut = normalizeShortcut(cfg.triggerShortcut || "Ctrl+Q");
       parsedShortcut = parseShortcut(shortcut);
     });
   }
@@ -350,7 +350,7 @@
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "sync" || !changes.opendict_config) return;
     const cfg = changes.opendict_config.newValue || {};
-    shortcut = normalizeShortcut(cfg.triggerShortcut || "Alt+Q");
+    shortcut = normalizeShortcut(cfg.triggerShortcut || "Ctrl+Q");
     parsedShortcut = parseShortcut(shortcut);
   });
 

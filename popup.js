@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey: "",
     model: "gpt-4o-mini",
     translationSource: "ai",
-    triggerShortcut: "Alt+Q",
+    triggerShortcut: "Ctrl+Q",
     exportFormat: "tsv",
   };
 
@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     normalizedParts.push(keyNorm);
     const normalized = normalizedParts.join("+");
 
-    if (/^(Ctrl\+T|Cmd\+T|Ctrl\+Q|Cmd\+Q)$/i.test(normalized)) {
+    if (/^(Ctrl\+T|Cmd\+T|Cmd\+Q)$/i.test(normalized)) {
       return DEFAULTS.triggerShortcut;
     }
 
