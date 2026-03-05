@@ -77,13 +77,18 @@
 - **Model**：默认 `gpt-4o-mini`，可点击刷新按钮从 API 自动拉取模型列表
 
 支持的第三方 API 服务（只要兼容 OpenAI 格式）：
-- OpenRouter
-- Google Gemini
-- DeepSeek
-- Moonshot (Kimi)
-- 智谱 (GLM)
-- Ollama（本地模型）
-- 其他 OpenAI 兼容服务
+
+| 服务商 | API Base URL |
+|--------|-------------|
+| OpenAI | `https://api.openai.com/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| DeepSeek | `https://api.deepseek.com/v1` |
+| Moonshot (Kimi) | `https://api.moonshot.cn/v1` |
+| 智谱 (GLM) | `https://open.bigmodel.cn/api/paas/v4` |
+| Ollama（本地） | `http://localhost:11434/v1` |
+
+> 💡 通过 OpenRouter 还可以间接使用 Claude、Llama 等不直接兼容 OpenAI 格式的模型。
 
 ### 快捷键设置
 
