@@ -148,21 +148,42 @@
     if (!text) return;
     const word = text.trim().toLowerCase();
 
-    // Try real dictionary audio first, fall back to SpeechSynthesis
+    // Multiple dictionary audio sources for reliability
     const audioSources = [
+      // Google Translate TTS (US English) — most reliable
+      `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(word)}&tl=en-us&client=tw-ob`,
+      // Google Translate TTS (UK English)
+      `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(word)}&tl=en-gb&client=tw-ob`,
+      // Youdao US pronunciation
       `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`,
+      // Youdao UK pronunciation
       `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=1`,
     ];
 
     let tried = 0;
     const tryNext = () => {
-      if (tried < audioSources.length) {
-        const audio = new Audio(audioSources[tried++]);
-        audio.volume = 1.0;
-        audio.play().catch(() => tryNext());
-      } else {
+      if (tried >= audioSources.length) {
         fallbackSpeak(word);
+        return;
       }
+      const audio = new Audio();
+      let settled = false;
+      const settle = () => { if (!settled) { settled = true; tryNext(); } };
+
+      // Timeout: if audio doesn't start playing within 3s, try next
+      const timer = setTimeout(settle, 3000);
+
+      audio.oncanplaythrough = () => {
+        clearTimeout(timer);
+        if (!settled) {
+          settled = true;
+          audio.play().catch(() => { settled = false; settle(); });
+        }
+      };
+      audio.onerror = () => { clearTimeout(timer); settle(); };
+      audio.volume = 1.0;
+      audio.src = audioSources[tried++];
+      audio.load();
     };
     tryNext();
   }
