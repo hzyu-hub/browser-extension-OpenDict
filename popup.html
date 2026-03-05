@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>OpenDict Settings</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --od-font:
+          -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+          Arial, sans-serif;
+      }
+
+      body {
+        width: 340px;
+        font-family: var(--od-font);
+        font-size: 13px;
+        color: #e2e8f0;
+        background: #15202e;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .wrapper {
+        padding: 20px 22px 8px 22px;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        gap: 6px;
+      }
+
+      h1 {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue",
+          Arial, sans-serif;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #38bdf8;
+        margin-bottom: 16px;
+      }
+
+      h1 img {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+      }
+
+      label {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+        margin-top: 14px;
+        padding-left: 4px;
+      }
+
+      label:first-of-type {
+        margin-top: 0;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 10px;
+        background: rgba(30, 41, 59, 0.6);
+        color: #e2e8f0;
+        font-family: inherit;
+        font-weight: 500;
+        font-size: 13px;
+        line-height: 1.35;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      option {
+        font-family: var(--od-font);
+        font-size: 13px;
+      }
+
+      input:focus,
+      select:focus {
+        outline: none;
+        border-color: #38bdf8;
+        background: rgba(30, 41, 59, 0.9);
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+      }
+
+      input::placeholder {
+        color: #64748b;
+      }
+
+      select {
+        appearance: none;
+        -webkit-appearance: none;
+        color: #e2e8f0;
+      }
+
+      .hint {
+        font-size: 11px;
+        font-family: var(--od-font);
+        color: #64748b;
+        margin-top: 4px;
+        padding-left: 4px;
+      }
+
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        padding-top: 12px;
+      }
+
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .config-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+
+
+      .export-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        margin-top: 22px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(148, 163, 184, 0.1);
+      }
+
+
+
+      .export-section label:first-of-type {
+        margin-top: 0;
+      }
+
+      .export-section .hint + .btn-row {
+        margin-top: 10px;
+      }
+
+      .row-hidden {
+        display: none;
+      }
+
+      button {
+        flex: 1;
+        padding: 10px;
+        border: none;
+        border-radius: 10px;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.2;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      #save {
+        background: linear-gradient(135deg, #0ea5e9, #0284c7);
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
+      }
+
+      #save:hover {
+        box-shadow: 0 6px 16px rgba(14, 165, 233, 0.35);
+      }
+
+      #test {
+        background: rgba(100, 116, 139, 0.15);
+        color: #94a3b8;
+        border: 1px solid rgba(148, 163, 184, 0.15);
+      }
+
+      #test:hover {
+        color: #e2e8f0;
+        background: rgba(100, 116, 139, 0.3);
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+
+      #export {
+        background: rgba(100, 116, 139, 0.15);
+        color: #94a3b8;
+        border: 1px solid rgba(148, 163, 184, 0.15);
+      }
+
+      #export:hover {
+        color: #e2e8f0;
+        background: rgba(100, 116, 139, 0.3);
+        border-color: rgba(148, 163, 184, 0.3);
+      }
+
+      #test:disabled,
+      #export:disabled,
+      #save:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      .status {
+        text-align: center;
+        font-family: var(--od-font);
+        font-size: 12px;
+        margin-top: 16px;
+        min-height: 18px;
+        line-height: 1.4;
+        padding: 0 4px;
+      }
+
+      .status.success {
+        color: #34d399;
+      }
+
+      .status.error {
+        color: #fb923c;
+      }
+
+      .status.loading {
+        color: #94a3b8;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="wrapper">
+      <h1>
+        <img src="icons/icon48.png" alt="Icon" />
+        OpenDict
+      </h1>
+
+      <div class="config-section">
+        <label for="translationSource">Translation Source</label>
+        <select id="translationSource">
+          <option value="ai">AI Translation</option>
+          <option value="google">Google Translation</option>
+          <option value="microsoft">Microsoft Translation</option>
+        </select>
+        <div class="hint" id="sourceHint">Google / Microsoft can be used without API key</div>
+
+        <div id="aiFields">
+          <label for="baseUrl">API Base URL</label>
+          <input type="text" id="baseUrl" placeholder="https://api.openai.com/v1" />
+          <div class="hint">OpenAI-compatible API endpoint</div>
+
+          <label for="apiKey">API Key</label>
+          <input type="password" id="apiKey" placeholder="sk-..." />
+
+          <label for="model">Model</label>
+          <input type="text" id="model" placeholder="gpt-4o-mini" />
+          <div class="hint">Use a lightweight model for faster translations</div>
+        </div>
+
+        <label for="triggerShortcut">Trigger Shortcut</label>
+        <input type="text" id="triggerShortcut" placeholder="Alt+Q" />
+        <div class="hint">
+          Select text first, then press this shortcut to translate
+        </div>
+      </div>
+
+      <div class="actions">
+        <div class="btn-row" id="aiActions">
+          <button id="test">Verify</button>
+          <button id="save">Save</button>
+        </div>
+        <div class="export-section">
+          <label for="exportFormat">Export Format</label>
+          <select id="exportFormat">
+            <option value="tsv">TSV (term[TAB]meaning) - Recommended</option>
+            <option value="csv">CSV (term,meaning)</option>
+            <option value="txt_pipe">TXT (term | meaning)</option>
+            <option value="txt_anki">TXT for Anki (term;meaning)</option>
+          </select>
+          <div class="hint">Choose the format your dictionary/flashcard app can import</div>
+          <div class="btn-row">
+            <button id="export">Export</button>
+          </div>
+        </div>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
