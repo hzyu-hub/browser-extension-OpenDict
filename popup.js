@@ -9,7 +9,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const translationSource = document.getElementById("translationSource");
   const triggerShortcut = document.getElementById("triggerShortcut");
   const exportFormat = document.getElementById("exportFormat");
-  const sourceHint = document.getElementById("sourceHint");
   const saveBtn = document.getElementById("save");
   const testBtn = document.getElementById("test");
   const exportBtn = document.getElementById("export");
@@ -30,10 +29,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     aiFields.style.display = isAI ? "block" : "none";
     aiActions.style.display = isAI ? "flex" : "none";
-
-    sourceHint.textContent = isAI
-      ? "AI translation requires API Key"
-      : `${source === "google" ? "Google" : "Microsoft"} translation works without extra configuration`;
   }
 
   function normalizeShortcut(input) {

@@ -28,7 +28,7 @@
       }
 
       .wrapper {
-        padding: 20px 22px 8px 22px;
+        padding: 20px 22px 14px 22px;
         display: flex;
         flex-direction: column;
         flex: 1;
@@ -46,7 +46,9 @@
         font-weight: 700;
         letter-spacing: -0.02em;
         color: #38bdf8;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
       }
 
       h1 img {
@@ -57,13 +59,13 @@
 
       label {
         display: block;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 600;
         color: #94a3b8;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
         margin-bottom: 6px;
-        margin-top: 14px;
+        margin-top: 16px;
         padding-left: 4px;
       }
 
@@ -107,6 +109,10 @@
         appearance: none;
         -webkit-appearance: none;
         color: #e2e8f0;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        padding-right: 32px;
       }
 
       .hint {
@@ -120,7 +126,7 @@
       .btn-row {
         display: flex;
         gap: 10px;
-        padding-top: 12px;
+        padding-top: 16px;
       }
 
       .actions {
@@ -135,13 +141,25 @@
         gap: 0;
       }
 
+      #aiFields {
+        margin-top: 6px;
+        padding: 12px 14px 14px;
+        background: rgba(15, 23, 42, 0.35);
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.08);
+      }
+
+      #aiFields label:first-of-type {
+        margin-top: 0;
+      }
+
 
 
       .export-section {
         display: flex;
         flex-direction: column;
         gap: 0;
-        margin-top: 22px;
+        margin-top: 18px;
         padding-top: 14px;
         border-top: 1px solid rgba(148, 163, 184, 0.1);
       }
@@ -227,7 +245,8 @@
         text-align: center;
         font-family: var(--od-font);
         font-size: 12px;
-        margin-top: 16px;
+        margin-top: 12px;
+        margin-bottom: 4px;
         min-height: 18px;
         line-height: 1.4;
         padding: 0 4px;
@@ -261,12 +280,9 @@
           <option value="google">Google Translation</option>
           <option value="microsoft">Microsoft Translation</option>
         </select>
-        <div class="hint" id="sourceHint">Google / Microsoft can be used without API key</div>
-
         <div id="aiFields">
           <label for="baseUrl">API Base URL</label>
           <input type="text" id="baseUrl" placeholder="https://api.openai.com/v1" />
-          <div class="hint">OpenAI-compatible API endpoint</div>
 
           <label for="apiKey">API Key</label>
           <input type="password" id="apiKey" placeholder="sk-..." />
