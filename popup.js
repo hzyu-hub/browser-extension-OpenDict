@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const baseUrl = document.getElementById("baseUrl");
   const apiKey = document.getElementById("apiKey");
   const model = document.getElementById("model");
+  const fetchModelsBtn = document.getElementById("fetchModels");
   const aiFields = document.getElementById("aiFields");
   const aiActions = document.getElementById("aiActions");
   const translationSource = document.getElementById("translationSource");
@@ -50,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return {
       baseUrl: baseUrl.value.trim().replace(/\/+$/, "") || DEFAULTS.baseUrl,
       apiKey: apiKey.value.trim(),
-      model: model.value.trim() || DEFAULTS.model,
+      model: model.value || DEFAULTS.model,
       translationSource: translationSource.value || DEFAULTS.translationSource,
       triggerShortcut: normalizeShortcut(triggerShortcut.value),
     };
@@ -73,6 +74,67 @@ document.addEventListener("DOMContentLoaded", () => {
     exportFormat.value = cfg.exportFormat || DEFAULTS.exportFormat;
     applySourceLayout();
   });
+
+  function setModelOptions(models, selectedModel) {
+    const current = selectedModel || model.value;
+    model.innerHTML = "";
+    const seen = new Set();
+    for (const m of models) {
+      if (seen.has(m)) continue;
+      seen.add(m);
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = m;
+      model.appendChild(opt);
+    }
+    if (!seen.has(current)) {
+      const opt = document.createElement("option");
+      opt.value = current;
+      opt.textContent = current;
+      model.insertBefore(opt, model.firstChild);
+    }
+    model.value = current;
+  }
+
+  async function fetchModels() {
+    const url = (baseUrl.value.trim().replace(/\/+$/, "") || DEFAULTS.baseUrl) + "/models";
+    const key = apiKey.value.trim();
+    if (!key) {
+      showStatus("Enter API Key first", "error");
+      return;
+    }
+    fetchModelsBtn.disabled = true;
+    fetchModelsBtn.classList.add("spinning");
+    showStatus("Fetching models...", "loading");
+    try {
+      const resp = await fetch(url, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!resp.ok) {
+        showStatus(`Failed to fetch models: ${resp.status}`, "error");
+        return;
+      }
+      const data = await resp.json();
+      const list = (data.data || data.models || [])
+        .map((m) => m.id || m.name || m)
+        .filter((id) => typeof id === "string")
+        .sort();
+      if (!list.length) {
+        showStatus("No models found", "error");
+        return;
+      }
+      setModelOptions(list, model.value);
+      showStatus(`Loaded ${list.length} models`, "success");
+      setTimeout(() => { status.textContent = ""; }, 1500);
+    } catch (e) {
+      showStatus(`Network error: ${e.message}`, "error");
+    } finally {
+      fetchModelsBtn.disabled = false;
+      fetchModelsBtn.classList.remove("spinning");
+    }
+  }
+
+  fetchModelsBtn.addEventListener("click", fetchModels);
 
   translationSource.addEventListener("change", applySourceLayout);
   translationSource.addEventListener("change", () => {

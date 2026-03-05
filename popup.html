@@ -156,6 +156,52 @@
         margin-top: 0;
       }
 
+      .model-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .model-row select {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .icon-btn {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 8px;
+        color: #94a3b8;
+        cursor: pointer;
+        transition: all 0.2s;
+        padding: 0;
+      }
+
+      .icon-btn:hover {
+        color: #38bdf8;
+        border-color: #38bdf8;
+        background: rgba(56, 189, 248, 0.08);
+      }
+
+      .icon-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .icon-btn.spinning svg {
+        animation: opendict-spin 0.8s linear infinite;
+      }
+
+      @keyframes opendict-spin {
+        to { transform: rotate(360deg); }
+      }
+
 
 
       .export-section {
@@ -291,8 +337,15 @@
           <input type="password" id="apiKey" placeholder="sk-..." />
 
           <label for="model">Model</label>
-          <input type="text" id="model" placeholder="gpt-4o-mini" />
-          <div class="hint">Use a lightweight model for faster translations</div>
+          <div class="model-row">
+            <select id="model">
+              <option value="gpt-4o-mini">gpt-4o-mini</option>
+            </select>
+            <button type="button" id="fetchModels" class="icon-btn" title="Fetch models from API">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+          </div>
+          <div class="hint">Click refresh to load models from your API</div>
         </div>
 
         <label for="triggerShortcut">Trigger Shortcut</label>
