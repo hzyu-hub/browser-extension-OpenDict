@@ -8,7 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const aiFields = document.getElementById("aiFields");
   const aiActions = document.getElementById("aiActions");
   const translationSource = document.getElementById("translationSource");
-  const triggerShortcut = document.getElementById("triggerShortcut");
+  const triggerShortcutLabel = document.getElementById("triggerShortcutLabel");
+  const openShortcutsBtn = document.getElementById("openShortcuts");
   const exportFormat = document.getElementById("exportFormat");
   const saveBtn = document.getElementById("save");
   const testBtn = document.getElementById("test");
@@ -119,14 +120,14 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey.value = cfg.apiKey;
     model.value = cfg.model;
     translationSource.value = cfg.translationSource;
-    const safeShortcut = normalizeShortcut(cfg.triggerShortcut);
-    triggerShortcut.value = safeShortcut;
     exportFormat.value = cfg.exportFormat || DEFAULTS.exportFormat;
-    if (safeShortcut !== cfg.triggerShortcut) {
-      const fixedConfig = { ...cfg, triggerShortcut: safeShortcut };
-      saveConfig(fixedConfig);
-    }
     applySourceLayout();
+
+    // Show the actual registered shortcut
+    chrome.commands.getAll((cmds) => {
+      const cmd = cmds.find(c => c.name === "trigger-translate");
+      triggerShortcutLabel.textContent = cmd?.shortcut || "Ctrl+Q (not set)";
+    });
   });
 
   function setModelOptions(models, selectedModel) {
@@ -201,32 +202,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  triggerShortcut.addEventListener("change", () => {
-    const config = getCurrentConfigFromUI();
-    saveConfig(config, () => {
-      showStatus("Shortcut updated", "success");
-      setTimeout(() => {
-        status.textContent = "";
-      }, 1200);
-    });
-  });
-
-  triggerShortcut.addEventListener("keydown", (e) => {
-    if (e.key === "Tab") return;
-    e.preventDefault();
-    const captured = buildShortcutFromKeydown(e);
-    if (!captured) {
-      showStatus("Use at least one modifier + letter/number", "error");
-      return;
-    }
-    triggerShortcut.value = captured;
-    const config = getCurrentConfigFromUI();
-    saveConfig(config, () => {
-      showStatus(`Shortcut set to ${captured}`, "success");
-      setTimeout(() => {
-        status.textContent = "";
-      }, 1200);
-    });
+  openShortcutsBtn.addEventListener("click", () => {
+    chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
   });
 
   exportFormat.addEventListener("change", () => {
