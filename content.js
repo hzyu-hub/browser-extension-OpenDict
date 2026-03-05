@@ -53,56 +53,56 @@
     popup.id = POPUP_ID;
 
     const POPUP_W = 380;
-    const GAP = 10;
+    const GAP = 6;
     const MARGIN = 8;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    // Always try to get fresh selection rect
     const selRect = getSelectionRect();
 
-    let left, top;
-    if (selRect) {
-      // Try right of selection
-      left = selRect.right + GAP;
-      top = selRect.top;
-
-      // If overflows right, try left of selection
-      if (left + POPUP_W > vw - MARGIN) {
-        left = selRect.left - POPUP_W - GAP;
-      }
-      // Still overflows left, place below selection centered
-      if (left < MARGIN) {
-        left = Math.max(MARGIN, Math.min(selRect.left, vw - POPUP_W - MARGIN));
-        top = selRect.bottom + GAP;
-      }
-    } else {
-      // Fallback to coordinates
-      left = x + GAP;
-      top = y;
-      if (left + POPUP_W > vw - MARGIN) {
-        left = x - POPUP_W - GAP;
-      }
-      if (left < MARGIN) left = MARGIN;
-    }
-
-    // Clamp top
-    top = Math.max(MARGIN, Math.min(top, vh - MARGIN - 100));
-
-    popup.style.left = `${left}px`;
-    popup.style.top = `${top}px`;
+    // Temporarily place offscreen to measure height
+    popup.style.left = "-9999px";
+    popup.style.top = "-9999px";
     document.body.appendChild(popup);
 
-    // After render, adjust if popup overflows bottom
     requestAnimationFrame(() => {
       if (!popup) return;
-      const popRect = popup.getBoundingClientRect();
-      if (popRect.bottom > vh - MARGIN) {
-        popup.style.top = `${Math.max(MARGIN, vh - popRect.height - MARGIN)}px`;
+      const popH = popup.offsetHeight;
+      let left, top;
+
+      if (selRect) {
+        // Popup's bottom-left corner near the selection's top-right corner
+        left = selRect.right + GAP;
+        top = selRect.top - popH - GAP;
+
+        // If overflows right, flip to left side of selection
+        if (left + POPUP_W > vw - MARGIN) {
+          left = selRect.left - POPUP_W - GAP;
+        }
+        // If overflows left, align with selection left
+        if (left < MARGIN) {
+          left = MARGIN;
+        }
+        // If overflows top, place below selection instead
+        if (top < MARGIN) {
+          top = selRect.bottom + GAP;
+        }
+      } else {
+        left = x + GAP;
+        top = y - popH - GAP;
+        if (left + POPUP_W > vw - MARGIN) left = x - POPUP_W - GAP;
+        if (left < MARGIN) left = MARGIN;
+        if (top < MARGIN) top = y + GAP;
       }
-      if (popRect.right > vw - MARGIN) {
-        popup.style.left = `${Math.max(MARGIN, vw - popRect.width - MARGIN)}px`;
+
+      // Final clamp: ensure bottom doesn't overflow
+      if (top + popH > vh - MARGIN) {
+        top = vh - popH - MARGIN;
       }
+      if (top < MARGIN) top = MARGIN;
+
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
     });
 
     // Enable dragging via header
