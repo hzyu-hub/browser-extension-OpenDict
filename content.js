@@ -332,6 +332,16 @@
     }
 
     if (isEditableElement(e.target)) return;
+
+    // Debug: log modifier key presses to help diagnose shortcut issues
+    if (e.ctrlKey || e.altKey || e.metaKey) {
+      console.log("[OpenDict] keydown:", {
+        key: e.key, code: e.code,
+        ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey,
+        currentShortcut: shortcut, parsed: parsedShortcut
+      });
+    }
+
     if (!isShortcutMatched(e)) return;
 
     const currentSelection = window.getSelection()?.toString().trim();

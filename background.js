@@ -278,6 +278,17 @@ async function buildHistoryExport(options = {}) {
   });
 }
 
+// Migrate shortcut on install/update
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.sync.get("opendict_config", (data) => {
+    const cfg = data.opendict_config;
+    if (cfg && cfg.triggerShortcut === "Alt+Q") {
+      cfg.triggerShortcut = DEFAULT_CONFIG.triggerShortcut;
+      chrome.storage.sync.set({ opendict_config: cfg });
+    }
+  });
+});
+
 // Handle messages from content script / popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "opendict-translate-request" && sender.tab?.id) {
