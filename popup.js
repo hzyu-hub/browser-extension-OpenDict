@@ -20,7 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey: "",
     model: "gpt-4o-mini",
     translationSource: "ai",
-    triggerShortcut: "Ctrl+T",
+    triggerShortcut: "Alt+Q",
     exportFormat: "tsv",
   };
 
@@ -35,11 +35,15 @@ document.addEventListener("DOMContentLoaded", () => {
   function normalizeShortcut(input) {
     const raw = String(input || "").trim();
     if (!raw) return DEFAULTS.triggerShortcut;
-    return raw
+    const normalized = raw
       .split("+")
       .map((p) => p.trim())
       .filter(Boolean)
       .join("+");
+    if (/^(Ctrl|Control|Cmd|Command|Meta)\+T$/i.test(normalized)) {
+      return DEFAULTS.triggerShortcut;
+    }
+    return normalized;
   }
 
   function showStatus(msg, type) {
@@ -70,8 +74,13 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey.value = cfg.apiKey;
     model.value = cfg.model;
     translationSource.value = cfg.translationSource;
-    triggerShortcut.value = cfg.triggerShortcut;
+    const safeShortcut = normalizeShortcut(cfg.triggerShortcut);
+    triggerShortcut.value = safeShortcut;
     exportFormat.value = cfg.exportFormat || DEFAULTS.exportFormat;
+    if (safeShortcut !== cfg.triggerShortcut) {
+      const fixedConfig = { ...cfg, triggerShortcut: safeShortcut };
+      saveConfig(fixedConfig);
+    }
     applySourceLayout();
   });
 

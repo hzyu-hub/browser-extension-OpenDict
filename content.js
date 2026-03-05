@@ -6,7 +6,7 @@
 
   const POPUP_ID = "opendict-popup";
   let popup = null;
-  let shortcut = "Ctrl+T";
+  let shortcut = "Alt+Q";
   let pendingSelection = null;
   let lastClickPos = { x: 0, y: 0 };
   let autoCloseTimer = null;
@@ -154,7 +154,12 @@
   }
 
   function normalizeShortcut(value) {
-    return String(value || "Ctrl+T").replace(/\s+/g, "");
+    const normalized = String(value || "Alt+Q").replace(/\s+/g, "");
+    // Browser-reserved combos like Ctrl/Cmd+T often never reach page scripts.
+    if (/^(Ctrl|Control|Cmd|Command|Meta)\+T$/i.test(normalized)) {
+      return "Alt+Q";
+    }
+    return normalized;
   }
 
   function parseShortcut(value) {
@@ -244,7 +249,7 @@
   function loadShortcut() {
     chrome.storage.sync.get("opendict_config", (data) => {
       const cfg = data.opendict_config || {};
-      shortcut = normalizeShortcut(cfg.triggerShortcut || "Ctrl+T");
+      shortcut = normalizeShortcut(cfg.triggerShortcut || "Alt+Q");
       parsedShortcut = parseShortcut(shortcut);
     });
   }
@@ -284,7 +289,7 @@
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "sync" || !changes.opendict_config) return;
     const cfg = changes.opendict_config.newValue || {};
-    shortcut = normalizeShortcut(cfg.triggerShortcut || "Ctrl+T");
+    shortcut = normalizeShortcut(cfg.triggerShortcut || "Alt+Q");
     parsedShortcut = parseShortcut(shortcut);
   });
 

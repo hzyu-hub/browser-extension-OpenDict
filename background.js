@@ -7,7 +7,7 @@ const DEFAULT_CONFIG = {
   apiKey: "",
   model: "gpt-4o-mini",
   translationSource: "ai", // ai | google | microsoft
-  triggerShortcut: "Ctrl+T",
+  triggerShortcut: "Alt+Q",
 };
 
 const HISTORY_KEY = "opendict_history";
@@ -115,7 +115,9 @@ async function translateWithMicrosoft(text) {
     }
 
     const html = await pageResp.text();
-    const tokenMatch = html.match(/params_AbusePreventionHelper\s*=\s*\[(\d+),"([^"]+)",(\d+)\]/);
+    const tokenMatch = html.match(
+      /params_AbusePreventionHelper\s*=\s*\[(\d+),"([^"]+)",(\d+)\]/,
+    );
     const igMatch = html.match(/IG:"([A-Z0-9]+)"/);
     if (!tokenMatch || !igMatch) {
       return translateWithGoogle(text);
@@ -132,13 +134,16 @@ async function translateWithMicrosoft(text) {
     form.set("token", token);
     form.set("key", key);
 
-    const resp = await fetch(`https://www.bing.com/ttranslatev3?isVertical=1&&IG=${ig}&IID=translator.5028.1`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+    const resp = await fetch(
+      `https://www.bing.com/ttranslatev3?isVertical=1&&IG=${ig}&IID=translator.5028.1`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        },
+        body: form.toString(),
       },
-      body: form.toString(),
-    });
+    );
 
     if (!resp.ok) return translateWithGoogle(text);
 
@@ -235,8 +240,12 @@ async function buildHistoryExport(options = {}) {
 
       const normalized = list
         .map((item) => {
-          const term = String(item.text || "").replace(/[\t\n\r]+/g, " ").trim();
-          const meaning = String(item.meaning || "").replace(/[\t\n\r]+/g, " ").trim();
+          const term = String(item.text || "")
+            .replace(/[\t\n\r]+/g, " ")
+            .trim();
+          const meaning = String(item.meaning || "")
+            .replace(/[\t\n\r]+/g, " ")
+            .trim();
           const timestamp = Number(item.timestamp || 0);
           return { term, meaning, timestamp };
         })
@@ -252,7 +261,9 @@ async function buildHistoryExport(options = {}) {
             byTerm.set(key, item);
           }
         }
-        exportItems = Array.from(byTerm.values()).sort((a, b) => a.term.localeCompare(b.term));
+        exportItems = Array.from(byTerm.values()).sort((a, b) =>
+          a.term.localeCompare(b.term),
+        );
       }
 
       const lines = exportItems.map((item) => formatExportLine(item, format));
@@ -302,7 +313,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "opendict-export-history") {
     (async () => {
-      const payload = await buildHistoryExport({ dedupe: msg.dedupe, format: msg.format });
+      const payload = await buildHistoryExport({
+        dedupe: msg.dedupe,
+        format: msg.format,
+      });
       sendResponse(payload);
     })();
     return true;
