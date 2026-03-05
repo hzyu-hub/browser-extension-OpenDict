@@ -6,7 +6,7 @@
 
   const POPUP_ID = "opendict-popup";
   let popup = null;
-  let shortcut = "Alt+Q";
+  let shortcut = "Ctrl+T";
   let pendingSelection = null;
   let lastClickPos = { x: 0, y: 0 };
   let autoCloseTimer = null;
@@ -154,7 +154,7 @@
   }
 
   function normalizeShortcut(value) {
-    return String(value || "Alt+Q").replace(/\s+/g, "");
+    return String(value || "Ctrl+T").replace(/\s+/g, "");
   }
 
   function parseShortcut(value) {
@@ -244,7 +244,7 @@
   function loadShortcut() {
     chrome.storage.sync.get("opendict_config", (data) => {
       const cfg = data.opendict_config || {};
-      shortcut = normalizeShortcut(cfg.triggerShortcut || "Alt+Q");
+      shortcut = normalizeShortcut(cfg.triggerShortcut || "Ctrl+T");
       parsedShortcut = parseShortcut(shortcut);
     });
   }
@@ -284,7 +284,7 @@
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "sync" || !changes.opendict_config) return;
     const cfg = changes.opendict_config.newValue || {};
-    shortcut = normalizeShortcut(cfg.triggerShortcut || "Alt+Q");
+    shortcut = normalizeShortcut(cfg.triggerShortcut || "Ctrl+T");
     parsedShortcut = parseShortcut(shortcut);
   });
 

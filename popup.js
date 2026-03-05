@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey: "",
     model: "gpt-4o-mini",
     translationSource: "ai",
-    triggerShortcut: "Alt+Q",
+    triggerShortcut: "Ctrl+T",
     exportFormat: "tsv",
   };
 

@@ -7,7 +7,7 @@ const DEFAULT_CONFIG = {
   apiKey: "",
   model: "gpt-4o-mini",
   translationSource: "ai", // ai | google | microsoft
-  triggerShortcut: "Alt+Q",
+  triggerShortcut: "Ctrl+T",
 };
 
 const HISTORY_KEY = "opendict_history";
