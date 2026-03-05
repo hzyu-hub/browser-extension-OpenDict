@@ -8,8 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const aiFields = document.getElementById("aiFields");
   const aiActions = document.getElementById("aiActions");
   const translationSource = document.getElementById("translationSource");
-  const triggerShortcutLabel = document.getElementById("triggerShortcutLabel");
-  const openShortcutsBtn = document.getElementById("openShortcuts");
+  const triggerShortcut = document.getElementById("triggerShortcut");
   const exportFormat = document.getElementById("exportFormat");
   const saveBtn = document.getElementById("save");
   const testBtn = document.getElementById("test");
@@ -103,6 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
       apiKey: apiKey.value.trim(),
       model: model.value || DEFAULTS.model,
       translationSource: translationSource.value || DEFAULTS.translationSource,
+      triggerShortcut: normalizeShortcut(triggerShortcut.value),
     };
   }
 
@@ -119,15 +119,14 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey.value = cfg.apiKey;
     model.value = cfg.model;
     translationSource.value = cfg.translationSource;
+    const safeShortcut = normalizeShortcut(cfg.triggerShortcut);
+    triggerShortcut.value = safeShortcut;
     exportFormat.value = cfg.exportFormat || DEFAULTS.exportFormat;
+    if (safeShortcut !== cfg.triggerShortcut) {
+      const fixedConfig = { ...cfg, triggerShortcut: safeShortcut };
+      saveConfig(fixedConfig);
+    }
     applySourceLayout();
-
-    // Show the actual registered shortcut as key caps
-    chrome.commands.getAll((cmds) => {
-      const cmd = cmds.find(c => c.name === "trigger-translate");
-      const shortcutStr = cmd?.shortcut || "Ctrl+Q";
-      renderKeyCaps(shortcutStr);
-    });
   });
 
   function setModelOptions(models, selectedModel) {
@@ -202,22 +201,21 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  openShortcutsBtn.addEventListener("click", () => {
-    chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+  triggerShortcut.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") return;
+    e.preventDefault();
+    const captured = buildShortcutFromKeydown(e);
+    if (!captured) {
+      showStatus("Use at least one modifier + letter/number", "error");
+      return;
+    }
+    triggerShortcut.value = captured;
+    const config = getCurrentConfigFromUI();
+    saveConfig(config, () => {
+      showStatus(`Shortcut set to ${captured}`, "success");
+      setTimeout(() => { status.textContent = ""; }, 1200);
+    });
   });
-
-  function renderKeyCaps(shortcutStr) {
-    const keys = shortcutStr.split("+").map(k => k.trim()).filter(Boolean);
-    const symbolMap = {
-      "Ctrl": "Ctrl", "MacCtrl": "^", "Alt": "Alt", "Shift": "Shift",
-      "Command": "\u2318", "Meta": "\u2318"
-    };
-    triggerShortcutLabel.innerHTML = keys.map((k, i) => {
-      const label = symbolMap[k] || k;
-      const sep = i < keys.length - 1 ? '<span class="key-plus">+</span>' : '';
-      return `<span class="key-cap">${label}</span>${sep}`;
-    }).join('');
-  }
 
   exportFormat.addEventListener("change", () => {
     const config = getCurrentConfigFromUI();
