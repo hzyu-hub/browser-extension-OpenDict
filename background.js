@@ -278,8 +278,9 @@ async function buildHistoryExport(options = {}) {
   });
 }
 
-// Migrate shortcut on install/update
+// On install/update: migrate config + re-inject content script into existing tabs
 chrome.runtime.onInstalled.addListener(() => {
+  // Migrate old shortcut
   chrome.storage.sync.get("opendict_config", (data) => {
     const cfg = data.opendict_config;
     if (cfg && cfg.triggerShortcut === "Alt+Q") {
@@ -287,6 +288,31 @@ chrome.runtime.onInstalled.addListener(() => {
       chrome.storage.sync.set({ opendict_config: cfg });
     }
   });
+
+  // Re-inject content script into all existing tabs so shortcut works immediately
+  chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (tabs) => {
+    for (const tab of tabs) {
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"],
+      }).catch(() => {});
+      chrome.scripting.insertCSS({
+        target: { tabId: tab.id },
+        files: ["content.css"],
+      }).catch(() => {});
+    }
+  });
+});
+
+// Browser-level shortcut via commands API (most reliable)
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "trigger-translate") {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: "opendict-trigger" });
+      }
+    });
+  }
 });
 
 // Handle messages from content script / popup

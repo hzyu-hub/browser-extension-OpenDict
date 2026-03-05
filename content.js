@@ -365,6 +365,21 @@
   });
 
   chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "opendict-trigger") {
+      // Triggered by browser-level commands API shortcut
+      const currentSelection = window.getSelection()?.toString().trim();
+      const text = currentSelection || pendingSelection?.text;
+      if (!text || text.length > 200) return;
+
+      const context = pendingSelection?.context || "";
+      const x = pendingSelection?.x ?? lastClickPos.x;
+      const y = pendingSelection?.y ?? lastClickPos.y;
+
+      requestTranslate(text, context, x, y);
+      pendingSelection = null;
+      return;
+    }
+
     if (msg.type === "opendict-loading") {
       showLoading(msg.word, lastClickPos.x || 200, lastClickPos.y || 200);
     } else if (msg.type === "opendict-result") {
