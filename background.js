@@ -12,6 +12,169 @@ const DEFAULT_CONFIG = {
 
 const HISTORY_KEY = "opendict_history";
 const HISTORY_LIMIT = 1000;
+const PRONUNCIATION_CACHE_LIMIT = 200;
+const pronunciationCache = new Map();
+
+function normalizePronunciationText(text) {
+  return String(text || "")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[\s"'“”‘’([{<]+/, "")
+    .replace(/[\s"'“”‘’.,!?;:)\]}>]+$/, "")
+    .trim();
+}
+
+function isDictionaryWord(text) {
+  return /^[A-Za-z]+(?:[.'’-][A-Za-z]+)*$/.test(text);
+}
+
+function setPronunciationCache(key, value) {
+  if (pronunciationCache.has(key)) pronunciationCache.delete(key);
+  pronunciationCache.set(key, value);
+  if (pronunciationCache.size > PRONUNCIATION_CACHE_LIMIT) {
+    const oldestKey = pronunciationCache.keys().next().value;
+    if (oldestKey) pronunciationCache.delete(oldestKey);
+  }
+}
+
+function normalizeAudioUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("//")) return `https:${url}`;
+  return url;
+}
+
+function getPronunciationRegionRank(candidate) {
+  const value = `${candidate.url || ""} ${candidate.text || ""}`.toLowerCase();
+  if (/\b(us|american|en-us)\b/.test(value) || /[-_](us)(?:[.-]|$)/.test(value)) {
+    return 0;
+  }
+  if (/\b(uk|british|en-gb)\b/.test(value) || /[-_](uk)(?:[.-]|$)/.test(value)) {
+    return 1;
+  }
+  if (/\b(au|australian|nz)\b/.test(value) || /[-_](au|nz)(?:[.-]|$)/.test(value)) {
+    return 2;
+  }
+  return 3;
+}
+
+function buildFallbackPronunciationSources(text) {
+  const encoded = encodeURIComponent(text);
+  const singleWord = isDictionaryWord(text);
+  const sources = [];
+
+  if (singleWord) {
+    sources.push(
+      {
+        url: `https://dict.youdao.com/dictvoice?audio=${encoded}&type=2`,
+        source: "youdao",
+        label: "youdao-us",
+      },
+      {
+        url: `https://dict.youdao.com/dictvoice?audio=${encoded}&type=1`,
+        source: "youdao",
+        label: "youdao-uk",
+      },
+    );
+  }
+
+  sources.push(
+    {
+      url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-us&client=tw-ob`,
+      source: "google-tts",
+      label: "google-us",
+    },
+    {
+      url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-gb&client=tw-ob`,
+      source: "google-tts",
+      label: "google-uk",
+    },
+  );
+
+  return sources;
+}
+
+function dedupePronunciationSources(sources) {
+  const seen = new Set();
+  return sources.filter((source) => {
+    const url = normalizeAudioUrl(source?.url);
+    if (!url || seen.has(url)) return false;
+    seen.add(url);
+    source.url = url;
+    return true;
+  });
+}
+
+async function fetchDictionaryPronunciationSources(text) {
+  if (!isDictionaryWord(text)) return [];
+
+  const cacheKey = text.toLowerCase();
+  if (pronunciationCache.has(cacheKey)) {
+    return pronunciationCache.get(cacheKey);
+  }
+
+  const queries = Array.from(new Set([text, text.toLowerCase()]));
+  for (const query of queries) {
+    try {
+      const resp = await fetch(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(query)}`,
+      );
+      if (!resp.ok) continue;
+
+      const data = await resp.json();
+      const entries = Array.isArray(data) ? data : [];
+      const sources = dedupePronunciationSources(
+        entries
+          .flatMap((entry) =>
+            Array.isArray(entry?.phonetics) ? entry.phonetics : [],
+          )
+          .map((phonetic) => ({
+            url: phonetic?.audio || "",
+            text: phonetic?.text || "",
+            source: "dictionaryapi",
+            label: phonetic?.text || "",
+          }))
+          .filter((item) => item.url),
+      ).sort((a, b) => {
+        const regionDiff =
+          getPronunciationRegionRank(a) - getPronunciationRegionRank(b);
+        if (regionDiff !== 0) return regionDiff;
+        const aMp3 = /\.mp3($|\?)/i.test(a.url) ? 0 : 1;
+        const bMp3 = /\.mp3($|\?)/i.test(b.url) ? 0 : 1;
+        return aMp3 - bMp3;
+      });
+
+      setPronunciationCache(cacheKey, sources);
+      if (sources.length > 0) return sources;
+    } catch {
+      // Fall through to the next query variant.
+    }
+  }
+
+  setPronunciationCache(cacheKey, []);
+  return [];
+}
+
+async function getPronunciationPayload(text) {
+  const normalizedText = normalizePronunciationText(text);
+  if (!normalizedText) {
+    return { normalizedText: "", sources: [] };
+  }
+
+  const dictionarySources =
+    await fetchDictionaryPronunciationSources(normalizedText);
+  const fallbackSources = buildFallbackPronunciationSources(normalizedText);
+
+  return {
+    normalizedText,
+    sources: dedupePronunciationSources([
+      ...dictionarySources,
+      ...fallbackSources,
+    ]),
+  };
+}
 
 async function getConfig() {
   return new Promise((resolve) => {
@@ -355,6 +518,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         dedupe: msg.dedupe,
         format: msg.format,
       });
+      sendResponse(payload);
+    })();
+    return true;
+  }
+
+  if (msg.type === "opendict-get-pronunciation-sources") {
+    (async () => {
+      const payload = await getPronunciationPayload(msg.text);
       sendResponse(payload);
     })();
     return true;

@@ -18,7 +18,7 @@
 
 - **三种翻译源**：AI（OpenAI 兼容）、Google 翻译、Microsoft 翻译
 - **单词详解**：音标、词性、中文释义、英文定义、双语例句
-- **真人发音**：Google TTS + 有道词典音频，多源自动切换
+- **真人发音**：词典真人音频优先，Google TTS + 浏览器语音多源兜底
 - **快捷键触发**：浏览器级快捷键，默认 `Ctrl+Q`（Chrome Commands API）
 - **拖拽移动**：翻译悬浮框可自由拖动
 - **手动收藏**：翻译单词后按需存入生词本，选择权完全交给用户
@@ -157,15 +157,14 @@
 
 ## 🔊 发音系统
 
-采用多源级联策略，确保发音可靠性：
+采用多源级联策略，优先保证“像真人”和“读得准”：
 
-1. **Google Translate TTS（美式）** — 首选，最稳定
-2. **Google Translate TTS（英式）** — 备选
-3. **有道词典音频（美式）** — 第三备选
-4. **有道词典音频（英式）** — 第四备选
-5. **Web Speech API** — 最终兜底（浏览器内置语音合成）
+1. **DictionaryAPI 词典音频（优先美式）** — 首选，优先使用词条级发音音频
+2. **有道词典音频（美式 / 英式）** — 词典音频第二梯队
+3. **Google Translate TTS（美式 / 英式）** — 当词典音频缺失时兜底
+4. **Web Speech API** — 最终兜底（浏览器内置语音合成）
 
-每个源有 3 秒超时，自动切换到下一个。
+插件会先清洗选中的首尾标点，再按音源质量自动切换；每个远程音源有超时保护。
 
 ---
 
@@ -226,4 +225,5 @@ MIT License
 
 - [Google Translate](https://translate.google.com/) — 免费翻译服务
 - [Bing Translator](https://www.bing.com/translator) — Microsoft 翻译服务
+- [DictionaryAPI](https://dictionaryapi.dev/) — 提供词典音频查询
 - [有道词典](https://www.youdao.com/) — 提供真人发音音频

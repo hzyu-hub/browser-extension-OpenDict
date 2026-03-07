@@ -20,8 +20,8 @@ OpenDict — Quick Lookup 是一款轻量级浏览器翻译插件，选中文字
 • Microsoft 翻译 — 通过 Bing 免费翻译
 
 🔊 真人发音
-• Google TTS + 有道词典音频，多源自动切换
-• 美式/英式发音可选
+• 词典真人音频优先，Google TTS + 浏览器语音多源兜底
+• 优先美式发音，必要时自动回退到其他可用音源
 
 📚 生词本
 • 翻译单词后可手动收藏到生词本
@@ -75,4 +75,4 @@ Required to inject the translation popup script into web pages when triggered by
 Required to export wordbook history as downloadable files (TSV/CSV/TXT formats).
 
 ### host_permissions (<all_urls>)
-Required to send translation requests to external APIs: Google Translate (translate.googleapis.com), Microsoft/Bing Translator (www.bing.com), user-configured AI API endpoints, and pronunciation audio sources (translate.google.com, dict.youdao.com).
+Required to send translation requests to external APIs: Google Translate (translate.googleapis.com), Microsoft/Bing Translator (www.bing.com), user-configured AI API endpoints, and pronunciation audio sources (api.dictionaryapi.dev, translate.google.com, dict.youdao.com).

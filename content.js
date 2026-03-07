@@ -11,6 +11,9 @@
   let lastClickPos = { x: 0, y: 0 };
   let autoCloseTimer = null;
   let parsedShortcut = null;
+  let currentAudio = null;
+  let audioPlayToken = 0;
+  const pronunciationCache = new Map();
 
   function escapeHtml(text) {
     if (!text) return "";
@@ -32,6 +35,68 @@
       popup?.remove();
       popup = null;
     }, 200);
+  }
+
+  function normalizePronunciationText(text) {
+    return String(text || "")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[\s"'“”‘’([{<]+/, "")
+      .replace(/[\s"'“”‘’.,!?;:)\]}>]+$/, "")
+      .trim();
+  }
+
+  function getPronunciationCacheKey(text) {
+    return normalizePronunciationText(text).toLowerCase();
+  }
+
+  function cachePronunciationPayload(payload) {
+    if (!payload?.normalizedText) return;
+    pronunciationCache.set(
+      getPronunciationCacheKey(payload.normalizedText),
+      payload,
+    );
+  }
+
+  function getCachedPronunciationPayload(text) {
+    const key = getPronunciationCacheKey(text);
+    return key ? pronunciationCache.get(key) : null;
+  }
+
+  function fetchPronunciationPayload(text) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: "opendict-get-pronunciation-sources", text },
+        (response) => {
+          if (chrome.runtime.lastError || !response) {
+            resolve(null);
+            return;
+          }
+          cachePronunciationPayload(response);
+          resolve(response);
+        },
+      );
+    });
+  }
+
+  function prefetchPronunciation(text) {
+    const normalizedText = normalizePronunciationText(text);
+    if (!normalizedText || getCachedPronunciationPayload(normalizedText)) return;
+    void fetchPronunciationPayload(normalizedText);
+  }
+
+  function stopCurrentAudio() {
+    audioPlayToken += 1;
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.removeAttribute("src");
+      currentAudio.load();
+      currentAudio = null;
+    }
+    window.speechSynthesis.cancel();
   }
 
   function getSelectionRect() {
@@ -144,76 +209,150 @@
     });
   }
 
-  function playAudio(text) {
-    if (!text) return;
-    const word = text.trim().toLowerCase();
+  async function playAudio(text) {
+    const normalizedText = normalizePronunciationText(text);
+    if (!normalizedText) return;
 
-    // Multiple dictionary audio sources for reliability
-    const audioSources = [
-      // Google Translate TTS (US English) — most reliable
-      `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(word)}&tl=en-us&client=tw-ob`,
-      // Google Translate TTS (UK English)
-      `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(word)}&tl=en-gb&client=tw-ob`,
-      // Youdao US pronunciation
-      `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=2`,
-      // Youdao UK pronunciation
-      `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(word)}&type=1`,
-    ];
+    stopCurrentAudio();
+    const playToken = audioPlayToken;
 
-    let tried = 0;
-    const tryNext = () => {
-      if (tried >= audioSources.length) {
-        fallbackSpeak(word);
-        return;
-      }
-      const audio = new Audio();
-      let settled = false;
-      const settle = () => { if (!settled) { settled = true; tryNext(); } };
+    let payload = getCachedPronunciationPayload(normalizedText);
+    if (!payload) {
+      payload = await fetchPronunciationPayload(normalizedText);
+      if (playToken !== audioPlayToken) return;
+    }
 
-      // Timeout: if audio doesn't start playing within 3s, try next
-      const timer = setTimeout(settle, 3000);
-
-      audio.oncanplaythrough = () => {
-        clearTimeout(timer);
-        if (!settled) {
-          settled = true;
-          audio.play().catch(() => { settled = false; settle(); });
-        }
-      };
-      audio.onerror = () => { clearTimeout(timer); settle(); };
-      audio.volume = 1.0;
-      audio.src = audioSources[tried++];
-      audio.load();
-    };
-    tryNext();
+    const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+    const started = await playAudioSources(sources, playToken);
+    if (!started && playToken === audioPlayToken) {
+      fallbackSpeak(normalizedText, playToken);
+    }
   }
 
-  function fallbackSpeak(text) {
-    window.speechSynthesis.cancel();
+  async function playAudioSources(sources, playToken) {
+    for (const source of sources) {
+      if (playToken !== audioPlayToken) return true;
+      try {
+        await playSingleAudioSource(source.url, playToken);
+        return true;
+      } catch {}
+    }
+    return false;
+  }
+
+  function playSingleAudioSource(url, playToken) {
+    return new Promise((resolve, reject) => {
+      const audio = new Audio();
+      let finished = false;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        audio.onplaying = null;
+        audio.onended = null;
+        audio.onerror = null;
+        audio.onstalled = null;
+        audio.onabort = null;
+      };
+
+      const fail = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        if (currentAudio === audio) currentAudio = null;
+        reject(new Error("Audio playback failed"));
+      };
+
+      const succeed = () => {
+        if (finished) return;
+        if (playToken !== audioPlayToken) {
+          audio.pause();
+          fail();
+          return;
+        }
+        finished = true;
+        cleanup();
+        currentAudio = audio;
+        audio.onended = () => {
+          if (currentAudio === audio) currentAudio = null;
+        };
+        resolve();
+      };
+
+      const timer = setTimeout(fail, 4500);
+      audio.preload = "auto";
+      audio.volume = 1.0;
+      audio.onplaying = succeed;
+      audio.onerror = fail;
+      audio.onstalled = fail;
+      audio.onabort = fail;
+      audio.src = url;
+      currentAudio = audio;
+
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise.then(succeed).catch(fail);
+      }
+    });
+  }
+
+  function scoreVoice(voice) {
+    const name = String(voice?.name || "").toLowerCase();
+    const lang = String(voice?.lang || "").toLowerCase();
+    let score = 0;
+
+    if (lang === "en-us") score += 80;
+    else if (lang.startsWith("en-us")) score += 75;
+    else if (lang === "en-gb") score += 70;
+    else if (lang.startsWith("en")) score += 50;
+
+    if (
+      /microsoft|natural|premium|enhanced|samantha|ava|allison|karen|serena|daniel|alex|google us english|google uk english/.test(
+        name,
+      )
+    ) {
+      score += 25;
+    }
+
+    if (/compact|espeak|festival/.test(name)) {
+      score -= 20;
+    }
+
+    return score;
+  }
+
+  function fallbackSpeak(text, playToken) {
     const speak = () => {
+      if (playToken !== audioPlayToken) return;
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = window.speechSynthesis.getVoices();
-      const preferred = [
-        voices.find(v => v.name.includes("Google") && v.lang.includes("en") && v.name.includes("Female")),
-        voices.find(v => v.name === "Samantha"),
-        voices.find(v => v.name === "Karen"),
-        voices.find(v => v.name.includes("Google") && v.lang.includes("en")),
-        voices.find(v => v.lang === "en-US"),
-        voices.find(v => v.lang.startsWith("en"))
-      ];
-      const voice = preferred.find(v => v);
-      if (voice) { utterance.voice = voice; utterance.lang = voice.lang; }
-      else { utterance.lang = "en-US"; }
-      utterance.rate = 0.9;
+      const voice = [...voices]
+        .filter((item) => String(item?.lang || "").toLowerCase().startsWith("en"))
+        .sort((a, b) => scoreVoice(b) - scoreVoice(a))[0];
+
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+      } else {
+        utterance.lang = "en-US";
+      }
+
+      utterance.rate = 0.88;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
       window.speechSynthesis.speak(utterance);
     };
+
+    window.speechSynthesis.cancel();
     const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) speak();
-    else {
-      window.speechSynthesis.onvoiceschanged = () => { speak(); window.speechSynthesis.onvoiceschanged = null; };
+    if (voices.length > 0) {
+      speak();
+      return;
     }
+
+    window.speechSynthesis.onvoiceschanged = () => {
+      speak();
+      window.speechSynthesis.onvoiceschanged = null;
+    };
   }
 
   function showLoading(word, x, y) {
@@ -255,11 +394,12 @@
 
     const headerWordRow = popup.querySelector(".opendict-word-row");
     if (headerWordRow) {
+      prefetchPronunciation(word);
       headerWordRow.innerHTML = `
         <span class="opendict-word">${escapeHtml(word)}</span>
         <div class="opendict-phonetic-group">
           <span class="opendict-phonetic">${escapeHtml(data.phonetic || "")}</span>
-          <button class="opendict-icon-btn opendict-audio" title="Play US Pronunciation">
+          <button class="opendict-icon-btn opendict-audio" title="Play pronunciation">
             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
           </button>
         </div>

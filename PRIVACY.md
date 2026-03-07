@@ -1,6 +1,6 @@
 # Privacy Policy — OpenDict
 
-**Last updated: March 5, 2026**
+**Last updated: March 7, 2026**
 
 ## Overview
 
@@ -18,7 +18,7 @@ OpenDict makes network requests **only** to the translation services you configu
 - **AI Translation**: Requests are sent to the API endpoint you specify (e.g., OpenAI, DeepSeek, OpenRouter). Your API key is sent directly to your chosen provider.
 - **Google Translation**: Requests are sent to `translate.googleapis.com`.
 - **Microsoft Translation**: Requests are sent to `www.bing.com`.
-- **Pronunciation audio**: Requests are sent to `translate.google.com` and `dict.youdao.com`.
+- **Pronunciation audio**: Requests are sent to `api.dictionaryapi.dev`, `translate.google.com`, and `dict.youdao.com`.
 
 No data is sent to any server owned or operated by the extension developer.
 
