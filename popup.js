@@ -117,7 +117,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const cfg = { ...DEFAULTS, ...(data.opendict_config || {}) };
     baseUrl.value = cfg.baseUrl;
     apiKey.value = cfg.apiKey;
-    model.value = cfg.model;
+    setModelOptions([DEFAULTS.model], cfg.model || DEFAULTS.model);
     translationSource.value = cfg.translationSource;
     const safeShortcut = normalizeShortcut(cfg.triggerShortcut);
     triggerShortcut.value = safeShortcut;
