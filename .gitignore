@@ -4,5 +4,3 @@ node_modules/
 *.zip
 opendict.zip
 *.png
-dist/
-.cws.env
