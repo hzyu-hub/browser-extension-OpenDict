@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenDict — Quick Lookup",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "Translate selected text inline without leaving your browser",
   "permissions": ["storage", "activeTab", "downloads", "scripting"],
   "host_permissions": ["<all_urls>"],
