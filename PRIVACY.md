@@ -19,22 +19,24 @@ When the user invokes translation, the extension reads the selected text and may
 The extension stores settings entered by the user, including:
 - translation source
 - custom API base URL
-- API key
 - selected model
 - keyboard shortcut
 - export format
 
-3. Wordbook history
+3. API credentials
+If the user configures AI translation, the extension stores the user's API key locally in the browser so it can authenticate requests to the provider chosen by the user.
+
+4. Wordbook history
 If the user chooses to save a lookup result, the extension stores:
 - the term
 - the saved meaning
 - the translation source
 - a timestamp
 
-4. Pronunciation request data
+5. Pronunciation request data
 If the user presses the pronunciation button, the extension may send the selected word to pronunciation providers in order to fetch or play audio.
 
-5. Connectivity test data
+6. Connectivity test data
 If the user presses the Verify button in the settings page, the extension sends a minimal test request to the configured provider or built-in translation service to confirm connectivity.
 
 ## How OpenDict Uses Data
@@ -55,8 +57,8 @@ OpenDict does not sell user data, rent user data, use user data for advertising,
 
 OpenDict stores data in the user's browser as follows:
 
-- `chrome.storage.sync`: user settings, including API configuration and API key
-- `chrome.storage.local`: saved wordbook history
+- `chrome.storage.sync`: non-sensitive settings such as translation source, API base URL, selected model, keyboard shortcut, and export format
+- `chrome.storage.local`: API key and saved wordbook history
 - in-memory temporary state: transient selection/context data and pronunciation lookup cache used during the current browsing session
 
 OpenDict does not send stored settings or saved vocabulary to any server operated by the developer.
@@ -80,7 +82,7 @@ Depending on which features the user chooses, data may be sent directly from the
 
 ### Browser sync provider
 
-- If the user is signed in to Chrome and sync is enabled, settings stored with `chrome.storage.sync` may be synchronized by Google as part of Chrome's sync functionality.
+- If the user is signed in to Chrome and sync is enabled, only the non-sensitive settings stored with `chrome.storage.sync` may be synchronized by Google as part of Chrome's sync functionality. The API key is stored separately in `chrome.storage.local` and is not intended to sync across devices through Chrome sync.
 
 The developer of OpenDict does not receive selected text, saved vocabulary, API keys, or browsing data on developer-controlled servers.
 
@@ -90,7 +92,7 @@ OpenDict shares user data only as necessary to provide the requested feature. Fo
 
 - selected text is sent to the chosen translation provider when the user requests a translation
 - a selected word is sent to pronunciation providers when the user requests audio playback
-- settings may sync through Chrome sync if the user has enabled browser sync
+- non-sensitive settings may sync through Chrome sync if the user has enabled browser sync
 
 OpenDict does not transfer user data to advertising platforms, data brokers, or other resellers.
 

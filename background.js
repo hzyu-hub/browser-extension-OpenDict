@@ -8,12 +8,52 @@ const DEFAULT_CONFIG = {
   model: "gpt-4o-mini",
   translationSource: "ai", // ai | google | microsoft
   triggerShortcut: "Ctrl+Q",
+  exportFormat: "tsv",
 };
 
+const CONFIG_KEY = "opendict_config";
+const API_KEY_KEY = "opendict_api_key";
 const HISTORY_KEY = "opendict_history";
 const HISTORY_LIMIT = 1000;
 const PRONUNCIATION_CACHE_LIMIT = 200;
 const pronunciationCache = new Map();
+
+function getStorageValue(area, key) {
+  return new Promise((resolve) => {
+    chrome.storage[area].get(key, (data) => resolve(data[key]));
+  });
+}
+
+function setStorageValue(area, payload) {
+  return new Promise((resolve) => {
+    chrome.storage[area].set(payload, resolve);
+  });
+}
+
+function buildSyncConfig(config = {}) {
+  return {
+    baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl,
+    model: config.model || DEFAULT_CONFIG.model,
+    translationSource: config.translationSource || DEFAULT_CONFIG.translationSource,
+    triggerShortcut: config.triggerShortcut || DEFAULT_CONFIG.triggerShortcut,
+    exportFormat: config.exportFormat || DEFAULT_CONFIG.exportFormat,
+  };
+}
+
+async function migrateLegacyApiKey(syncConfig = {}) {
+  const legacyApiKey =
+    typeof syncConfig.apiKey === "string" ? syncConfig.apiKey.trim() : "";
+  if (!legacyApiKey) return;
+
+  const storedApiKey = await getStorageValue("local", API_KEY_KEY);
+  if (!storedApiKey) {
+    await setStorageValue("local", { [API_KEY_KEY]: legacyApiKey });
+  }
+
+  const nextConfig = { ...syncConfig };
+  delete nextConfig.apiKey;
+  await setStorageValue("sync", { [CONFIG_KEY]: buildSyncConfig(nextConfig) });
+}
 
 function normalizePronunciationText(text) {
   return String(text || "")
@@ -177,11 +217,23 @@ async function getPronunciationPayload(text) {
 }
 
 async function getConfig() {
-  return new Promise((resolve) => {
-    chrome.storage.sync.get("opendict_config", (data) => {
-      resolve({ ...DEFAULT_CONFIG, ...data.opendict_config });
-    });
-  });
+  const [syncConfig, storedApiKey] = await Promise.all([
+    getStorageValue("sync", CONFIG_KEY),
+    getStorageValue("local", API_KEY_KEY),
+  ]);
+
+  const mergedSyncConfig = { ...DEFAULT_CONFIG, ...(syncConfig || {}) };
+  const legacyApiKey =
+    typeof syncConfig?.apiKey === "string" ? syncConfig.apiKey.trim() : "";
+  await migrateLegacyApiKey(syncConfig || {});
+
+  return {
+    ...mergedSyncConfig,
+    apiKey:
+      typeof storedApiKey === "string" && storedApiKey.trim()
+        ? storedApiKey.trim()
+        : legacyApiKey,
+  };
 }
 
 async function translateWithAI(text, context, config) {
@@ -443,14 +495,17 @@ async function buildHistoryExport(options = {}) {
 
 // On install/update: migrate config + re-inject content script into existing tabs
 chrome.runtime.onInstalled.addListener(() => {
-  // Migrate old shortcut
-  chrome.storage.sync.get("opendict_config", (data) => {
-    const cfg = data.opendict_config;
-    if (cfg && cfg.triggerShortcut === "Alt+Q") {
-      cfg.triggerShortcut = DEFAULT_CONFIG.triggerShortcut;
-      chrome.storage.sync.set({ opendict_config: cfg });
+  (async () => {
+    const syncConfig = (await getStorageValue("sync", CONFIG_KEY)) || {};
+    const nextConfig = { ...syncConfig };
+
+    if (nextConfig.triggerShortcut === "Alt+Q") {
+      nextConfig.triggerShortcut = DEFAULT_CONFIG.triggerShortcut;
     }
-  });
+
+    await migrateLegacyApiKey(nextConfig);
+    await setStorageValue("sync", { [CONFIG_KEY]: buildSyncConfig(nextConfig) });
+  })();
 
   // Re-inject content script into all existing tabs so shortcut works immediately
   chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (tabs) => {

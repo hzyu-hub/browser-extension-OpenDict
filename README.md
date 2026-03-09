@@ -33,7 +33,7 @@
 - 选中单词 → 按下快捷键 → 弹出翻译结果
 - 支持发音、收藏到生词本
 
-### 插件设置页（暗色主题）
+### 插件设置页（浅色主题）
 - 配置翻译源、API Key、模型选择
 - 快捷键录入、导出格式设定
 
@@ -193,8 +193,8 @@ browser-extension-OpenDict/
 - **Chrome Commands API** — 浏览器级快捷键注册
 - **Chrome Scripting API** — 按需注入内容脚本
 - **Web Speech API** — 语音合成兜底
-- **chrome.storage.sync** — 配置跨设备同步
-- **chrome.storage.local** — 本地历史存储
+- **chrome.storage.sync** — 非敏感配置跨设备同步
+- **chrome.storage.local** — 本地 API Key 与历史存储
 - **chrome.downloads** — 文件导出下载
 
 ---

@@ -1,6 +1,8 @@
 // OpenDict Chrome Extension — Popup Settings Logic
 
 document.addEventListener("DOMContentLoaded", () => {
+  const CONFIG_KEY = "opendict_config";
+  const API_KEY_KEY = "opendict_api_key";
   const baseUrl = document.getElementById("baseUrl");
   const apiKey = document.getElementById("apiKey");
   const model = document.getElementById("model");
@@ -96,6 +98,34 @@ document.addEventListener("DOMContentLoaded", () => {
     status.className = "status " + type;
   }
 
+  function getStorageValue(area, key) {
+    return new Promise((resolve) => {
+      chrome.storage[area].get(key, (data) => resolve(data[key]));
+    });
+  }
+
+  function setStorageValue(area, payload) {
+    return new Promise((resolve) => {
+      chrome.storage[area].set(payload, resolve);
+    });
+  }
+
+  function removeStorageKey(area, key) {
+    return new Promise((resolve) => {
+      chrome.storage[area].remove(key, resolve);
+    });
+  }
+
+  function buildSyncConfig(config) {
+    return {
+      baseUrl: config.baseUrl || DEFAULTS.baseUrl,
+      model: config.model || DEFAULTS.model,
+      translationSource: config.translationSource || DEFAULTS.translationSource,
+      triggerShortcut: normalizeShortcut(config.triggerShortcut),
+      exportFormat: config.exportFormat || DEFAULTS.exportFormat,
+    };
+  }
+
   function getCurrentConfigFromUI() {
     return {
       baseUrl: baseUrl.value.trim().replace(/\/+$/, "") || DEFAULTS.baseUrl,
@@ -103,31 +133,72 @@ document.addEventListener("DOMContentLoaded", () => {
       model: model.value || DEFAULTS.model,
       translationSource: translationSource.value || DEFAULTS.translationSource,
       triggerShortcut: normalizeShortcut(triggerShortcut.value),
+      exportFormat: exportFormat.value || DEFAULTS.exportFormat,
     };
   }
 
-  function saveConfig(config, callback) {
-    chrome.storage.sync.set({ opendict_config: config }, () => {
-      if (typeof callback === "function") callback();
-    });
+  async function saveConfig(config, callback) {
+    const syncConfig = buildSyncConfig(config);
+    const nextApiKey =
+      typeof config.apiKey === "string" ? config.apiKey.trim() : "";
+
+    await setStorageValue("sync", { [CONFIG_KEY]: syncConfig });
+
+    if (nextApiKey) {
+      await setStorageValue("local", { [API_KEY_KEY]: nextApiKey });
+    } else {
+      await removeStorageKey("local", API_KEY_KEY);
+    }
+
+    if (typeof callback === "function") callback();
   }
 
-  // Load saved config
-  chrome.storage.sync.get("opendict_config", (data) => {
-    const cfg = { ...DEFAULTS, ...(data.opendict_config || {}) };
+  async function initializeConfig() {
+    const [syncConfig, localApiKey] = await Promise.all([
+      getStorageValue("sync", CONFIG_KEY),
+      getStorageValue("local", API_KEY_KEY),
+    ]);
+
+    const legacyApiKey =
+      typeof syncConfig?.apiKey === "string" ? syncConfig.apiKey.trim() : "";
+    const mergedConfig = {
+      ...DEFAULTS,
+      ...(syncConfig || {}),
+      apiKey:
+        typeof localApiKey === "string" && localApiKey.trim()
+          ? localApiKey.trim()
+          : legacyApiKey,
+    };
+    const safeShortcut = normalizeShortcut(mergedConfig.triggerShortcut);
+    const normalizedConfig = {
+      ...mergedConfig,
+      triggerShortcut: safeShortcut,
+      exportFormat: mergedConfig.exportFormat || DEFAULTS.exportFormat,
+    };
+
+    if (legacyApiKey && !localApiKey) {
+      await setStorageValue("local", { [API_KEY_KEY]: legacyApiKey });
+    }
+
+    if (
+      legacyApiKey ||
+      safeShortcut !== (syncConfig?.triggerShortcut || DEFAULTS.triggerShortcut) ||
+      !syncConfig?.exportFormat
+    ) {
+      await saveConfig(normalizedConfig);
+    }
+
+    const cfg = normalizedConfig;
     baseUrl.value = cfg.baseUrl;
     apiKey.value = cfg.apiKey;
     setModelOptions([DEFAULTS.model], cfg.model || DEFAULTS.model);
     translationSource.value = cfg.translationSource;
-    const safeShortcut = normalizeShortcut(cfg.triggerShortcut);
     triggerShortcut.value = safeShortcut;
     exportFormat.value = cfg.exportFormat || DEFAULTS.exportFormat;
-    if (safeShortcut !== cfg.triggerShortcut) {
-      const fixedConfig = { ...cfg, triggerShortcut: safeShortcut };
-      saveConfig(fixedConfig);
-    }
     applySourceLayout();
-  });
+  }
+
+  initializeConfig();
 
   function setModelOptions(models, selectedModel) {
     const current = selectedModel || model.value;
