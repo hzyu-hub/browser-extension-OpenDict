@@ -14,6 +14,7 @@
   let currentAudio = null;
   let audioPlayToken = 0;
   const pronunciationCache = new Map();
+  const pronunciationFetches = new Map();
 
   function escapeHtml(text) {
     if (!text) return "";
@@ -55,10 +56,13 @@
 
   function cachePronunciationPayload(payload) {
     if (!payload?.normalizedText) return;
-    pronunciationCache.set(
-      getPronunciationCacheKey(payload.normalizedText),
-      payload,
-    );
+    const key = getPronunciationCacheKey(payload.normalizedText);
+    if (!key) return;
+    pronunciationCache.set(key, payload);
+    if (pronunciationCache.size > 200) {
+      const oldestKey = pronunciationCache.keys().next().value;
+      if (oldestKey) pronunciationCache.delete(oldestKey);
+    }
   }
 
   function getCachedPronunciationPayload(text) {
@@ -67,9 +71,14 @@
   }
 
   function fetchPronunciationPayload(text) {
-    return new Promise((resolve) => {
+    const normalizedText = normalizePronunciationText(text);
+    const key = getPronunciationCacheKey(normalizedText);
+    if (!key) return Promise.resolve(null);
+    if (pronunciationFetches.has(key)) return pronunciationFetches.get(key);
+
+    const request = new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { type: "opendict-get-pronunciation-sources", text },
+        { type: "opendict-get-pronunciation-sources", text: normalizedText },
         (response) => {
           if (chrome.runtime.lastError || !response) {
             resolve(null);
@@ -79,7 +88,12 @@
           resolve(response);
         },
       );
+    }).finally(() => {
+      pronunciationFetches.delete(key);
     });
+
+    pronunciationFetches.set(key, request);
+    return request;
   }
 
   function prefetchPronunciation(text) {
@@ -97,6 +111,33 @@
       currentAudio = null;
     }
     window.speechSynthesis.cancel();
+  }
+
+  function isDictionaryWord(text) {
+    return /^[A-Za-z]+(?:[.'’-][A-Za-z]+)*$/.test(text);
+  }
+
+  function buildImmediatePronunciationSources(text) {
+    const encoded = encodeURIComponent(text);
+    const sources = [];
+
+    if (isDictionaryWord(text)) {
+      sources.push(
+        { url: `https://dict.youdao.com/dictvoice?audio=${encoded}&type=2` },
+        { url: `https://dict.youdao.com/dictvoice?audio=${encoded}&type=1` },
+      );
+    }
+
+    sources.push(
+      {
+        url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-us&client=tw-ob`,
+      },
+      {
+        url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-gb&client=tw-ob`,
+      },
+    );
+
+    return sources;
   }
 
   function getSelectionRect() {
@@ -218,8 +259,13 @@
 
     let payload = getCachedPronunciationPayload(normalizedText);
     if (!payload) {
-      payload = await fetchPronunciationPayload(normalizedText);
-      if (playToken !== audioPlayToken) return;
+      // Keep playback on the original click gesture: do not await remote lookup
+      // before the first play() call, or Chrome may block audio as autoplay.
+      void fetchPronunciationPayload(normalizedText);
+      payload = {
+        normalizedText,
+        sources: buildImmediatePronunciationSources(normalizedText),
+      };
     }
 
     const sources = Array.isArray(payload?.sources) ? payload.sources : [];
