@@ -176,8 +176,10 @@ browser-extension-OpenDict/
 ├── background.js      # 后台服务：翻译 API、历史存储、导出
 ├── content.js         # 内容脚本：悬浮框、发音、快捷键
 ├── content.css        # 悬浮框样式（白色主题）
-├── popup.html         # 设置页面 HTML + CSS（暗色主题）
+├── popup.html         # 设置页面 HTML + CSS（浅色主题）
 ├── popup.js           # 设置页逻辑：配置管理、验证、导出
+├── scripts/
+│   └── cws_release.sh # Chrome Web Store 打包/上传/发布脚本
 ├── icons/
 │   ├── icon16.png
 │   ├── icon48.png
@@ -206,6 +208,37 @@ browser-extension-OpenDict/
 1. 修改代码后，在 `chrome://extensions/` 页面点击扩展卡片上的 **刷新** 按钮
 2. 刷新当前网页以加载最新的内容脚本
 3. 如果修改了 `manifest.json`，需要重新加载整个扩展
+
+### 发布到 Chrome Web Store
+
+1. 确保 [`manifest.json`](manifest.json) 里的版本号已递增
+2. 复制示例环境文件并填入你的 Chrome Web Store API 凭据：
+   ```bash
+   cp .cws.env.example .cws.env
+   ```
+3. 一键打包、上传并提交发布：
+   ```bash
+   ./scripts/cws_release.sh release
+   ```
+
+可选命令：
+
+- `./scripts/cws_release.sh package`：只打包到 `dist/`
+- `./scripts/cws_release.sh upload`：打包并上传为新草稿
+- `./scripts/cws_release.sh publish`：发布当前已上传的草稿
+
+脚本默认读取仓库根目录的 `.cws.env`，需要这些变量：
+
+- `CWS_EXTENSION_ID`
+- `CWS_PUBLISHER_ID`
+- `CWS_CLIENT_ID`
+- `CWS_CLIENT_SECRET`
+- `CWS_REFRESH_TOKEN`
+
+Chrome Web Store API 官方文档：
+
+- [Using the Chrome Web Store API](https://developer.chrome.com/docs/webstore/using-api)
+- [Update your Chrome Web Store item](https://developer.chrome.com/docs/webstore/update/)
 
 ### 调试
 
