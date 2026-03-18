@@ -58,7 +58,7 @@ async function fetchPdfData(url) {
 
 // --- Rendering ---
 
-async function renderPage(pageNum) {
+async function renderPage(pageNum, parentContainer) {
   const page = await pdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale: currentScale });
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -86,18 +86,19 @@ async function renderPage(pageNum) {
   textDiv.className = "textLayer";
   wrapper.appendChild(textDiv);
 
+  // Append wrapper to DOM BEFORE rendering TextLayer.
+  // TextLayer.render() measures span offsetWidth for scaleX corrections;
+  // detached elements return offsetWidth=0, causing text misalignment.
+  parentContainer.appendChild(wrapper);
+
   try {
     const textContent = await page.getTextContent();
-    if (pdfjsLib.TextLayer) {
-      const tl = new pdfjsLib.TextLayer({
-        textContentSource: textContent,
-        container: textDiv,
-        viewport,
-      });
-      await tl.render();
-    } else {
-      buildTextLayerFallback(textContent, textDiv, viewport);
-    }
+    const tl = new pdfjsLib.TextLayer({
+      textContentSource: textContent,
+      container: textDiv,
+      viewport,
+    });
+    await tl.render();
   } catch {
     // Text layer failed; canvas still works
   }
@@ -105,29 +106,11 @@ async function renderPage(pageNum) {
   return wrapper;
 }
 
-// Manual text-layer positioning (fallback if TextLayer class is unavailable)
-function buildTextLayerFallback(textContent, el, viewport) {
-  for (const item of textContent.items) {
-    if (!item.str) continue;
-    const span = document.createElement("span");
-    span.textContent = item.str;
-    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-    const fontHeight = Math.hypot(tx[2], tx[3]);
-    if (fontHeight < 1) continue;
-    span.style.fontSize = `${fontHeight}px`;
-    span.style.fontFamily = "sans-serif";
-    span.style.left = `${tx[4]}px`;
-    span.style.top = `${tx[5] - fontHeight}px`;
-    el.appendChild(span);
-  }
-}
-
 async function renderAllPages() {
   container.innerHTML = "";
   renderedPages.clear();
   for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const wrapper = await renderPage(i);
-    container.appendChild(wrapper);
+    const wrapper = await renderPage(i, container);
     renderedPages.set(i, wrapper);
   }
 }
