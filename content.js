@@ -4,6 +4,10 @@
 (function () {
   "use strict";
 
+  // Prevent double execution (loaded both via <script> tag and programmatic injection)
+  if (window.__opendictLoaded) return;
+  window.__opendictLoaded = true;
+
   const POPUP_ID = "opendict-popup";
   let popup = null;
   let shortcut = "Ctrl+Q";
