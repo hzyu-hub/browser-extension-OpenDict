@@ -84,11 +84,12 @@ async function renderPage(pageNum, parentContainer) {
   // Text layer (selectable transparent overlay)
   const textDiv = document.createElement("div");
   textDiv.className = "textLayer";
+  // PDF.js 4.x positions spans using calc(var(--scale-factor) * ...) CSS
+  // expressions. The variable must be set externally (the official viewer's
+  // PDFPageView does this). Without it, font-size falls back to inherited
+  // value, causing character-level misalignment within each span.
+  textDiv.style.setProperty("--scale-factor", viewport.scale);
   wrapper.appendChild(textDiv);
-
-  // Append wrapper to DOM BEFORE rendering TextLayer.
-  // TextLayer.render() measures span offsetWidth for scaleX corrections;
-  // detached elements return offsetWidth=0, causing text misalignment.
   parentContainer.appendChild(wrapper);
 
   try {
