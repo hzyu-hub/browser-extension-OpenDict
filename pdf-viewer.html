@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Viewer — OpenDict</title>
+  <link rel="stylesheet" href="pdf-viewer.css">
+</head>
+<body>
+  <div id="toolbar">
+    <span id="filename"></span>
+    <div id="toolbar-controls">
+      <button id="prev-page" title="Previous page">&#9664;</button>
+      <span id="page-info">
+        <input id="page-num" type="number" min="1" value="1">
+        / <span id="page-count">-</span>
+      </span>
+      <button id="next-page" title="Next page">&#9654;</button>
+      <span class="separator"></span>
+      <button id="zoom-out" title="Zoom out">&minus;</button>
+      <span id="zoom-level">150%</span>
+      <button id="zoom-in" title="Zoom in">+</button>
+      <button id="zoom-reset" title="Reset zoom">Reset</button>
+    </div>
+  </div>
+  <div id="viewer-container"></div>
+  <script type="module" src="pdf-viewer.js"></script>
+</body>
+</html>

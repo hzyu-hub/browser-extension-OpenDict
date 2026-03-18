@@ -585,4 +585,90 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true;
   }
+
+  // PDF fetch proxy — service worker is not bound by CORS
+  if (msg.type === "opendict-fetch-pdf") {
+    (async () => {
+      try {
+        const resp = await fetch(msg.url);
+        if (!resp.ok) {
+          sendResponse({ error: `HTTP ${resp.status}` });
+          return;
+        }
+        const buffer = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const chunks = [];
+        for (let i = 0; i < bytes.length; i += 8192) {
+          chunks.push(
+            String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)),
+          );
+        }
+        sendResponse({ data: btoa(chunks.join("")) });
+      } catch (e) {
+        sendResponse({ error: e.message });
+      }
+    })();
+    return true;
+  }
+});
+
+// --- PDF Viewer Support ---
+
+// Intercept .pdf URL navigations → redirect to built-in viewer
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  if (details.frameId !== 0) return;
+  const extOrigin = chrome.runtime.getURL("");
+  if (details.url.startsWith(extOrigin)) return;
+  try {
+    const url = new URL(details.url);
+    if (url.pathname.toLowerCase().endsWith(".pdf")) {
+      chrome.tabs.update(details.tabId, {
+        url:
+          chrome.runtime.getURL("pdf-viewer.html") +
+          "?url=" +
+          encodeURIComponent(details.url),
+      });
+    }
+  } catch {}
+});
+
+// Detect application/pdf Content-Type for non-.pdf URLs
+chrome.webRequest.onHeadersReceived.addListener(
+  (details) => {
+    const extOrigin = chrome.runtime.getURL("");
+    if (details.url.startsWith(extOrigin)) return;
+    try {
+      const url = new URL(details.url);
+      if (url.pathname.toLowerCase().endsWith(".pdf")) return;
+    } catch {}
+    const ct = details.responseHeaders
+      ?.find((h) => h.name.toLowerCase() === "content-type")
+      ?.value?.toLowerCase();
+    if (!ct?.includes("application/pdf")) return;
+    // Don't intercept explicit downloads
+    const cd = details.responseHeaders
+      ?.find((h) => h.name.toLowerCase() === "content-disposition")
+      ?.value?.toLowerCase();
+    if (cd?.includes("attachment")) return;
+    chrome.tabs.update(details.tabId, {
+      url:
+        chrome.runtime.getURL("pdf-viewer.html") +
+        "?url=" +
+        encodeURIComponent(details.url),
+    });
+  },
+  { urls: ["<all_urls>"], types: ["main_frame"] },
+  ["responseHeaders"],
+);
+
+// Inject content script into viewer pages so translation works
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete") return;
+  if (!tab.url?.startsWith(chrome.runtime.getURL("pdf-viewer.html"))) return;
+  chrome.scripting
+    .executeScript({ target: { tabId }, files: ["content.js"] })
+    .catch(() => {});
+  chrome.scripting
+    .insertCSS({ target: { tabId }, files: ["content.css"] })
+    .catch(() => {});
 });
