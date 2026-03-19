@@ -24,6 +24,7 @@
 - **手动收藏**：翻译单词后按需存入生词本，选择权完全交给用户
 - **多格式导出**：TSV / CSV / TXT / Anki 格式，可直接导入 Anki 等记忆软件
 - **支持自定义 API**：兼容所有 OpenAI 格式的 API 端点（DeepSeek、Moonshot、本地模型等）
+- **PDF 内置阅读器**：自动拦截 PDF 页面，使用内置 PDF.js 渲染，支持文本选中翻译、缩放、页码导航
 
 ---
 
@@ -121,6 +122,14 @@
 
 直接显示中文译文，不显示收藏按钮。
 
+### PDF 文件翻译
+
+浏览器中打开任意 PDF 链接时，插件自动拦截并使用内置 PDF.js 阅读器渲染。PDF 页面中的文字可直接选中，按下快捷键即可翻译，操作体验与普通网页一致。
+
+- 支持 `.pdf` URL 自动拦截和 `Content-Type: application/pdf` 检测
+- 支持缩放（Ctrl+/- 或工具栏按钮）、页码导航、滚动定位
+- 本地 PDF 文件需在 `chrome://extensions` 中启用「允许访问文件网址」
+
 ### 悬浮框操作
 
 - **拖拽**：按住悬浮框顶部区域可拖动位置
@@ -173,11 +182,17 @@
 ```
 browser-extension-OpenDict/
 ├── manifest.json      # 扩展配置（Manifest V3）
-├── background.js      # 后台服务：翻译 API、历史存储、导出
+├── background.js      # 后台服务：翻译 API、历史存储、导出、PDF 拦截
 ├── content.js         # 内容脚本：悬浮框、发音、快捷键
 ├── content.css        # 悬浮框样式（白色主题）
 ├── popup.html         # 设置页面 HTML + CSS（浅色主题）
 ├── popup.js           # 设置页逻辑：配置管理、验证、导出
+├── pdf-viewer.html    # 内置 PDF 阅读器页面
+├── pdf-viewer.js      # PDF 渲染逻辑：PDF.js TextLayer、缩放、导航
+├── pdf-viewer.css     # PDF 阅读器样式（暗色工具栏 + 白色页面）
+├── lib/pdfjs/
+│   ├── pdf.min.mjs        # PDF.js 4.x 主库
+│   └── pdf.worker.min.mjs # PDF.js Web Worker
 ├── icons/
 │   ├── icon16.png
 │   ├── icon48.png
@@ -196,6 +211,8 @@ browser-extension-OpenDict/
 - **chrome.storage.sync** — 非敏感配置跨设备同步
 - **chrome.storage.local** — 本地 API Key 与历史存储
 - **chrome.downloads** — 文件导出下载
+- **chrome.webNavigation / webRequest** — PDF 页面自动拦截与重定向
+- **PDF.js 4.x**（Mozilla, Apache 2.0）— 内置 PDF 渲染与可选中文本层
 
 ---
 
@@ -227,3 +244,4 @@ MIT License
 - [Bing Translator](https://www.bing.com/translator) — Microsoft 翻译服务
 - [DictionaryAPI](https://dictionaryapi.dev/) — 提供词典音频查询
 - [有道词典](https://www.youdao.com/) — 提供真人发音音频
+- [PDF.js](https://mozilla.github.io/pdf.js/)（Mozilla）— 内置 PDF 渲染引擎
