@@ -25,6 +25,9 @@
 - **多格式导出**：TSV / CSV / TXT / Anki 格式，可直接导入 Anki 等记忆软件
 - **支持自定义 API**：兼容所有 OpenAI 格式的 API 端点（DeepSeek、Moonshot、本地模型等）
 - **PDF 内置阅读器**：自动拦截 PDF 页面，使用内置 PDF.js 渲染，支持文本选中翻译、缩放、页码导航
+- **PDF 侧边栏目录**：自动提取 PDF 大纲，点击章节标题快速跳转
+- **PDF 护眼模式**：一键切换暖色调滤镜，降低蓝光，长时间阅读更舒适
+- **PDF 智能缩放**：CSS transform 即时缩放 + 延迟高清重渲染，零闪烁流畅体验
 
 ---
 
@@ -128,6 +131,10 @@
 
 - 支持 `.pdf` URL 自动拦截和 `Content-Type: application/pdf` 检测
 - 支持缩放（Ctrl+/- 或工具栏按钮）、页码导航、滚动定位
+- 侧边栏目录：自动提取 PDF 大纲，点击跳转对应章节
+- 护眼模式：工具栏 ☀ 按钮切换暖色调，状态自动记忆
+- 智能缩放：先 CSS 缩放保持流畅，再异步重渲染保证清晰度
+- 懒加载渲染：只渲染可见页面，大文件也不卡顿
 - 本地 PDF 文件需在 `chrome://extensions` 中启用「允许访问文件网址」
 
 ### 悬浮框操作
@@ -188,8 +195,8 @@ browser-extension-OpenDict/
 ├── popup.html         # 设置页面 HTML + CSS（浅色主题）
 ├── popup.js           # 设置页逻辑：配置管理、验证、导出
 ├── pdf-viewer.html    # 内置 PDF 阅读器页面
-├── pdf-viewer.js      # PDF 渲染逻辑：PDF.js TextLayer、缩放、导航
-├── pdf-viewer.css     # PDF 阅读器样式（暗色工具栏 + 白色页面）
+├── pdf-viewer.js      # PDF 渲染逻辑：懒加载、智能缩放、目录、护眼模式
+├── pdf-viewer.css     # PDF 阅读器样式（暗色工具栏 + 白色页面 + 护眼模式）
 ├── lib/pdfjs/
 │   ├── pdf.min.mjs        # PDF.js 4.x 主库
 │   └── pdf.worker.min.mjs # PDF.js Web Worker
