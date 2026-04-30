@@ -570,10 +570,13 @@
 
     // Salvage AI field misallocation: if word fell back to source AND phonetic is
     // non-ASCII text different from source, the AI likely put the target word in
-    // phonetic. Promote it.
+    // phonetic. Promote it. Skip if phonetic clearly looks like IPA (wrapped in
+    // slashes or brackets) — that's a real phonetic, not a misplaced word.
+    const looksLikeIPA = /^[\/\[].+[\/\]]$/.test(phoneticDisplay);
     if (
       sameWord &&
       phoneticDisplay &&
+      !looksLikeIPA &&
       /[^\x00-\x7F]/.test(phoneticDisplay) &&
       phoneticDisplay.toLowerCase() !== sourceWord.toLowerCase()
     ) {
