@@ -48,9 +48,9 @@
 }
 
 .opendict-word {
-    font-weight: 700;
-    font-size: 18px;
-    color: #0284c7;
+    font-weight: 600;
+    font-size: 16px;
+    color: #1e293b;
     letter-spacing: -0.01em;
     white-space: nowrap;
     /* Allow shrinking if absolutely necessary, but prefer scroll or truncation */
@@ -145,6 +145,25 @@
     font-size: 15px;
     color: #1e293b;
     line-height: 1.4;
+}
+
+.opendict-pos-only {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.opendict-pos-only .opendict-pos {
+    margin-right: 0;
+}
+
+.opendict-pos-only .opendict-phonetic {
+    flex: 1;
+    min-width: 0;
+}
+
+.opendict-pos-only .opendict-icon-btn {
+    flex-shrink: 0;
 }
 
 .opendict-pos {
