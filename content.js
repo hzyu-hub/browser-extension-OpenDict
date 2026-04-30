@@ -564,8 +564,28 @@
     }
 
     const sourceWord = String(word || "").trim();
-    const targetWord = String(data.word || data.meaning || sourceWord).trim();
-    const sameWord = sourceWord.toLowerCase() === targetWord.toLowerCase();
+    let targetWord = String(data.word || data.meaning || sourceWord).trim();
+    let phoneticDisplay = String(data.phonetic || "").trim();
+    let sameWord = sourceWord.toLowerCase() === targetWord.toLowerCase();
+
+    // Salvage AI field misallocation: if word fell back to source AND phonetic is
+    // non-ASCII text different from source, the AI likely put the target word in
+    // phonetic. Promote it.
+    if (
+      sameWord &&
+      phoneticDisplay &&
+      /[^\x00-\x7F]/.test(phoneticDisplay) &&
+      phoneticDisplay.toLowerCase() !== sourceWord.toLowerCase()
+    ) {
+      targetWord = phoneticDisplay;
+      phoneticDisplay = "";
+      sameWord = false;
+    }
+    // Drop phonetic if it duplicates the word.
+    if (phoneticDisplay && phoneticDisplay === targetWord) {
+      phoneticDisplay = "";
+    }
+
     const audioLang =
       (userConfig.targetLanguage && LANG_TTS[userConfig.targetLanguage])
         ? userConfig.targetLanguage
@@ -583,8 +603,8 @@
       `;
     }
 
-    const phoneticHtml = data.phonetic
-      ? `<span class="opendict-phonetic">${escapeHtml(data.phonetic)}</span>`
+    const phoneticHtml = phoneticDisplay
+      ? `<span class="opendict-phonetic">${escapeHtml(phoneticDisplay)}</span>`
       : "";
 
     body.innerHTML = `
