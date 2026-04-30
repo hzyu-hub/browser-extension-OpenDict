@@ -147,21 +147,22 @@
     line-height: 1.4;
 }
 
-.opendict-pos-only {
+.opendict-row.opendict-pos-only {
     display: flex;
     align-items: center;
 }
 
-.opendict-pos-only .opendict-pos {
+.opendict-row.opendict-pos-only .opendict-pos {
     margin-right: 10px;
 }
 
-.opendict-pos-only .opendict-phonetic {
+.opendict-row.opendict-pos-only .opendict-phonetic {
     margin-right: 2px;
 }
 
-.opendict-pos-only .opendict-icon-btn {
+.opendict-row.opendict-pos-only .opendict-icon-btn {
     flex-shrink: 0;
+    margin-left: 0;
 }
 
 .opendict-pos {
