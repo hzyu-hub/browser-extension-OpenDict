@@ -452,38 +452,47 @@ async function translateWithAI(text, context, config) {
   if (!config.apiKey) return { error: "请先在插件设置中配置 AI API Key" };
 
   const isWord = /^\p{L}[\p{L}\p{M}'’\-]*$/u.test(text.trim());
+  const isAutoSource =
+    !config.sourceLanguage || config.sourceLanguage === "auto";
   const sourceLang = resolveSourceLang(text, config.sourceLanguage);
   const targetLang = config.targetLanguage && LANGUAGES[config.targetLanguage]
     ? config.targetLanguage
     : "zh-CN";
   const sourceLangName = LANGUAGES[sourceLang]?.name || "the source language";
   const targetLangName = LANGUAGES[targetLang]?.name || "Chinese";
+  // For sentence/source-mention copy, use a neutral phrase under auto-detect so
+  // the AI doesn't trust our (possibly wrong) script-based guess.
+  const sourceLangPhrase = isAutoSource
+    ? "the source language (which you must auto-detect)"
+    : sourceLangName;
   let prompt;
 
   if (isWord) {
     const contextInstruction = context
       ? `\nContext: "...${context.trim()}..."\nExplain the word "${text}" as used in this context.`
       : `\nWord: "${text}"`;
+    const sourceClause = isAutoSource
+      ? `First, auto-detect the actual source language of "${text}" — DO NOT assume it is ${targetLangName}. Many short Latin-script words come from French, German, Spanish, etc.`
+      : `The source language of "${text}" is ${sourceLangName}.`;
 
     prompt = `You are a concise ${targetLangName} monolingual dictionary.
-The user looked up the ${sourceLangName} word "${text}". ${contextInstruction}
+${sourceClause} ${contextInstruction}
 
-Step 1: Translate "${text}" into the most natural single-word ${targetLangName} equivalent in this context.
-Step 2: Provide a ${targetLangName} dictionary entry for that translated word.
+Step 1: If the source language of "${text}" is NOT ${targetLangName}, translate it into the most natural single-word ${targetLangName} equivalent in context. Step 2: Provide a ${targetLangName} dictionary entry for that ${targetLangName} word.
 
-If "${text}" is already in ${targetLangName}, skip step 1 — just produce the entry for "${text}".
+If the source language IS already ${targetLangName}, skip step 1 — produce the entry for "${text}" itself.
 
 Return JSON with these keys:
-- "word": The ${targetLangName} headword (the translation, or the original if same language). For Japanese, prefer kanji + okurigana, but use katakana for loanwords / proper nouns (e.g., Microsoft → マイクロソフト). When source language equals target language, "word" MUST be exactly the original input "${text}" (case/lemma may be normalized). NEVER put IPA, pinyin, romaji, or any pronunciation notation into "word" — that goes in "phonetic".
+- "word": The ${targetLangName} headword. If source≠target, this MUST be the ${targetLangName} translation, not the original input. If source=target, this MUST be exactly the original input "${text}" (case/lemma may be normalized). NEVER put IPA, pinyin, romaji, or any pronunciation notation into "word" — that goes in "phonetic". For Japanese, prefer kanji + okurigana, or katakana for loanwords (e.g., Microsoft → マイクロソフト).
 - "phonetic": A pronunciation aid for "word" that is DIFFERENT from "word" itself. Use IPA for European languages; pinyin with tone marks for Chinese; for Japanese, hiragana reading of kanji or romaji for kana-only words; for Korean, Hangul + romanization. CRITICAL: phonetic and word MUST be different strings. If no useful phonetic exists (e.g., word is already pure phonetic script), return an empty string.
 - "pos": Part of speech, abbreviated. Use ${targetLangName} convention if available, else English (n., v., adj.).
 - "definition": A short definition of "word", written entirely in ${targetLangName}.
-- "example": One natural example sentence using "word", written entirely in ${targetLangName}. No bilingual content. No ${sourceLangName} text in this field.
+- "example": One natural example sentence using "word", written entirely in ${targetLangName}. No bilingual content. Do NOT include text from any other language in this field.
 
-All natural-language output (pos, definition, example) MUST be ${targetLangName} only. Do not include any ${sourceLangName} text in those fields.
+All natural-language output (pos, definition, example) MUST be ${targetLangName} only.
 Output only valid JSON.`;
   } else {
-    prompt = `Translate the following ${sourceLangName} text to ${targetLangName}. Return a JSON object with a single key "translation".
+    prompt = `Translate the following text from ${sourceLangPhrase} to ${targetLangName}. Return a JSON object with a single key "translation".
 
 "${text}"`;
   }
