@@ -567,33 +567,61 @@
     let targetWord = String(data.word || data.meaning || sourceWord).trim();
     let phoneticDisplay = String(data.phonetic || "").trim();
 
-    // Detect IPA notation — both wrapped (/.../, [...]) and bare-form with stress
-    // marks or IPA-only phonemic characters. Used to recognize when the AI has
-    // accidentally put pronunciation into the "word" slot.
+    const targetLang = userConfig.targetLanguage || "zh-CN";
+    const targetScriptRegex = (SCRIPT_HINTS.find(([code]) => code === targetLang) || [])[1];
+    const targetIsNonLatin = !!targetScriptRegex;
+    const isInTargetScript = (s) => targetScriptRegex && targetScriptRegex.test(s);
+
+    // Detect IPA notation — wrapped (/.../, [...]) or bare with stress marks /
+    // IPA-only phonemic characters. Used to recognize AI putting pronunciation
+    // in the "word" slot.
     const ipaPattern = /^[\/\[].+[\/\]]$|[ˈˌːəɜɪæʌʊɔθðʃʒŋɹɛɒɑœøɣ]/;
 
-    // Case 1: AI returned IPA in "word" — swap into phonetic, recover word from source.
+    // Case A: AI put IPA in the "word" slot.
     if (data.word && ipaPattern.test(targetWord) && sourceWord) {
       if (!phoneticDisplay) phoneticDisplay = targetWord;
       targetWord = sourceWord;
     }
 
+    // Case B: target uses a non-Latin script, but "word" came back as Latin
+    // (pinyin / romaji / Hangul-romanization) while "phonetic" is in target
+    // script — AI swapped the two slots. Swap them back.
+    if (
+      targetIsNonLatin &&
+      targetWord &&
+      phoneticDisplay &&
+      !isInTargetScript(targetWord) &&
+      isInTargetScript(phoneticDisplay)
+    ) {
+      const tmp = targetWord;
+      targetWord = phoneticDisplay;
+      phoneticDisplay = tmp;
+    }
+
+    // Case C: target uses non-Latin script, "word" is Latin (romanization),
+    // "phonetic" is empty, but the source text itself is in target script
+    // (source==target lookup). Recover word from source, push the romanization
+    // into phonetic where it belongs.
+    if (
+      targetIsNonLatin &&
+      targetWord &&
+      !phoneticDisplay &&
+      !isInTargetScript(targetWord) &&
+      isInTargetScript(sourceWord)
+    ) {
+      phoneticDisplay = targetWord;
+      targetWord = sourceWord;
+    }
+
     let sameWord = sourceWord.toLowerCase() === targetWord.toLowerCase();
 
-    // Case 2: AI returned target word in "phonetic" instead of "word" (Japanese
-    // katakana, Korean Hangul, etc.). Salvage by promoting phonetic → word, but
-    // ONLY when the target language uses a non-Latin script. For Latin-script
-    // targets (English/French/German/etc.), non-ASCII in phonetic almost always
-    // means IPA — leaving it in phonetic is correct.
-    const targetLang = userConfig.targetLanguage || "zh-CN";
-    const targetScriptRegex = (SCRIPT_HINTS.find(([code]) => code === targetLang) || [])[1];
-    const phoneticIsTargetScript =
-      targetScriptRegex && targetScriptRegex.test(phoneticDisplay);
-
+    // Case D: word equals source (AI didn't translate) AND phonetic is in
+    // target script — promote phonetic to word. Only fires for non-Latin
+    // targets (Latin targets get IPA in phonetic, which we leave alone).
     if (
       sameWord &&
       phoneticDisplay &&
-      phoneticIsTargetScript &&
+      isInTargetScript(phoneticDisplay) &&
       !ipaPattern.test(phoneticDisplay) &&
       phoneticDisplay.toLowerCase() !== sourceWord.toLowerCase()
     ) {
@@ -602,7 +630,7 @@
       sameWord = false;
     }
 
-    // Drop phonetic if it duplicates the word.
+    // Case E: phonetic duplicates the word — drop it.
     if (phoneticDisplay && phoneticDisplay === targetWord) {
       phoneticDisplay = "";
     }
