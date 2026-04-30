@@ -474,7 +474,7 @@ Step 2: Provide a ${targetLangName} dictionary entry for that translated word.
 If "${text}" is already in ${targetLangName}, skip step 1 — just produce the entry for "${text}".
 
 Return JSON with these keys:
-- "word": The ${targetLangName} headword (the translation, or the original if same language). For Japanese, prefer kanji + okurigana, but use katakana for loanwords / proper nouns (e.g., Microsoft → マイクロソフト).
+- "word": The ${targetLangName} headword (the translation, or the original if same language). For Japanese, prefer kanji + okurigana, but use katakana for loanwords / proper nouns (e.g., Microsoft → マイクロソフト). When source language equals target language, "word" MUST be exactly the original input "${text}" (case/lemma may be normalized). NEVER put IPA, pinyin, romaji, or any pronunciation notation into "word" — that goes in "phonetic".
 - "phonetic": A pronunciation aid for "word" that is DIFFERENT from "word" itself. Use IPA for European languages; pinyin with tone marks for Chinese; for Japanese, hiragana reading of kanji or romaji for kana-only words; for Korean, Hangul + romanization. CRITICAL: phonetic and word MUST be different strings. If no useful phonetic exists (e.g., word is already pure phonetic script), return an empty string.
 - "pos": Part of speech, abbreviated. Use ${targetLangName} convention if available, else English (n., v., adj.).
 - "definition": A short definition of "word", written entirely in ${targetLangName}.

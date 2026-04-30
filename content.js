@@ -566,24 +566,42 @@
     const sourceWord = String(word || "").trim();
     let targetWord = String(data.word || data.meaning || sourceWord).trim();
     let phoneticDisplay = String(data.phonetic || "").trim();
+
+    // Detect IPA notation — both wrapped (/.../, [...]) and bare-form with stress
+    // marks or IPA-only phonemic characters. Used to recognize when the AI has
+    // accidentally put pronunciation into the "word" slot.
+    const ipaPattern = /^[\/\[].+[\/\]]$|[ˈˌːəɜɪæʌʊɔθðʃʒŋɹɛɒɑœøɣ]/;
+
+    // Case 1: AI returned IPA in "word" — swap into phonetic, recover word from source.
+    if (data.word && ipaPattern.test(targetWord) && sourceWord) {
+      if (!phoneticDisplay) phoneticDisplay = targetWord;
+      targetWord = sourceWord;
+    }
+
     let sameWord = sourceWord.toLowerCase() === targetWord.toLowerCase();
 
-    // Salvage AI field misallocation: if word fell back to source AND phonetic is
-    // non-ASCII text different from source, the AI likely put the target word in
-    // phonetic. Promote it. Skip if phonetic clearly looks like IPA (wrapped in
-    // slashes or brackets) — that's a real phonetic, not a misplaced word.
-    const looksLikeIPA = /^[\/\[].+[\/\]]$/.test(phoneticDisplay);
+    // Case 2: AI returned target word in "phonetic" instead of "word" (Japanese
+    // katakana, Korean Hangul, etc.). Salvage by promoting phonetic → word, but
+    // ONLY when the target language uses a non-Latin script. For Latin-script
+    // targets (English/French/German/etc.), non-ASCII in phonetic almost always
+    // means IPA — leaving it in phonetic is correct.
+    const targetLang = userConfig.targetLanguage || "zh-CN";
+    const targetScriptRegex = (SCRIPT_HINTS.find(([code]) => code === targetLang) || [])[1];
+    const phoneticIsTargetScript =
+      targetScriptRegex && targetScriptRegex.test(phoneticDisplay);
+
     if (
       sameWord &&
       phoneticDisplay &&
-      !looksLikeIPA &&
-      /[^\x00-\x7F]/.test(phoneticDisplay) &&
+      phoneticIsTargetScript &&
+      !ipaPattern.test(phoneticDisplay) &&
       phoneticDisplay.toLowerCase() !== sourceWord.toLowerCase()
     ) {
       targetWord = phoneticDisplay;
       phoneticDisplay = "";
       sameWord = false;
     }
+
     // Drop phonetic if it duplicates the word.
     if (phoneticDisplay && phoneticDisplay === targetWord) {
       phoneticDisplay = "";
