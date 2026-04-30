@@ -65,6 +65,29 @@
     ["th", /[฀-๿]/],
   ];
 
+  // All scripts each target language commonly *uses for words* (not just for
+  // detection). Japanese words are normally written in kanji and only fall back
+  // to kana for furigana / kana-only words; both are valid "target script".
+  // This is consulted when validating whether an AI-returned "word" looks like
+  // a real target-language word vs. a misplaced phonetic notation.
+  const LANG_VALID_SCRIPTS = {
+    "en":    null,
+    "zh-CN": /[一-鿿]/,
+    "zh-TW": /[一-鿿]/,
+    "ja":    /[一-鿿぀-ヿ]/,
+    "ko":    /[가-힯一-鿿]/,
+    "fr":    null,
+    "de":    null,
+    "es":    null,
+    "it":    null,
+    "pt":    null,
+    "ru":    /[Ѐ-ӿ]/,
+    "ar":    /[؀-ۿ]/,
+    "hi":    /[ऀ-ॿ]/,
+    "vi":    null,
+    "th":    /[฀-๿]/,
+  };
+
   let userConfig = {
     sourceLanguage: "auto",
     targetLanguage: "zh-CN",
@@ -568,7 +591,7 @@
     let phoneticDisplay = String(data.phonetic || "").trim();
 
     const targetLang = userConfig.targetLanguage || "zh-CN";
-    const targetScriptRegex = (SCRIPT_HINTS.find(([code]) => code === targetLang) || [])[1];
+    const targetScriptRegex = LANG_VALID_SCRIPTS[targetLang] || null;
     const targetIsNonLatin = !!targetScriptRegex;
     const isInTargetScript = (s) => targetScriptRegex && targetScriptRegex.test(s);
 
