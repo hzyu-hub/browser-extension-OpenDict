@@ -19,7 +19,7 @@
 - **三种翻译源**：AI（OpenAI 兼容）、Google 翻译、Microsoft 翻译
 - **多语言互译**：源/目标语言独立可选，源语言支持 Auto-detect，覆盖英、中（简/繁）、日、韩、法、德、西、意、葡、俄、阿、印地、越、泰共 15 种
 - **目标语单语词典**：AI 模式以**目标语**为主体——目标词、目标语音标、目标语定义、目标语例句、目标词发音；源词以小字+箭头方式同行展示，提示你刚查的是什么
-- **真人发音**：词典真人音频优先（target=英文时），Google TTS 多语言 + 浏览器语音多源兜底
+- **真人级发音**：英文走 DictionaryAPI / 有道真人录音；其他语言走 Microsoft Edge Neural TTS（神经合成、接近真人），全部音源失败时仍有 Web Speech 兜底
 - **快捷键触发**：浏览器级快捷键，默认 `Ctrl+Q`（Chrome Commands API）
 - **拖拽移动**：翻译悬浮框可自由拖动
 - **手动收藏**：翻译单词后按需存入生词本，选择权完全交给用户
@@ -186,19 +186,21 @@
 
 ## 🔊 发音系统
 
-发音按钮**朗读目标语对应的词**（不是源词）。按目标语自动选源：
+按目标语自动从多个音源里挑最自然的，由前向后兜底：
 
-**target=English**（多源级联，优先真人音频）：
-1. **DictionaryAPI 词典音频（优先美式）**
-2. **有道词典音频（美式 / 英式）**
-3. **Google Translate TTS（美式 / 英式）**
-4. **Web Speech API**
+**target=English**：
+1. **DictionaryAPI 词典音频**（真人录音，优先美式）
+2. **有道词典音频**（真人录音，美/英）
+3. **Microsoft Edge Neural TTS**（`en-US-AriaNeural` 神经合成，非常自然）
+4. **Google Translate TTS**
+5. **Web Speech API**
 
-**target=其他语言**（中、日、韩、法、德、俄、阿等）：
-1. **Google Translate TTS** — 主源（按目标语切换 `tl=` 参数）
-2. **Web Speech API** — 兜底（按 `lang` 前缀匹配可用 voice）
+**target=其他语言**（中、日、韩、法、德、俄、阿、印地、越、泰等）：
+1. **Microsoft Edge Neural TTS**（按目标语切换神经声，如 `zh-CN-XiaoxiaoNeural` / `ja-JP-NanamiNeural` / `fr-FR-DeniseNeural`）
+2. **Google Translate TTS**
+3. **Web Speech API**
 
-插件会先清洗选中的首尾标点，再按音源质量自动切换；每个远程音源有超时保护。
+> Edge Neural TTS 用的是 Microsoft Edge 浏览器自带 "Read Aloud" 功能的同一接口，零 API Key、零额外配置、零费用。任意环节失败都会自动降级到下一个音源，保证发音按钮永不挂。每个远程音源 5 秒超时；同一词命中缓存第二次秒响。
 
 ---
 

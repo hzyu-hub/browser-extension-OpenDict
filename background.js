@@ -244,6 +244,158 @@ async function fetchDictionaryPronunciationSources(text) {
   return [];
 }
 
+// --- Microsoft Edge Read Aloud Neural TTS ---
+// Uses the same WebSocket endpoint that Edge browser's "Read aloud" feature
+// hits. Same approach as rany2/edge-tts and msedge-tts npm.
+const EDGE_TTS_VOICES = {
+  "en":    "en-US-AriaNeural",
+  "zh-CN": "zh-CN-XiaoxiaoNeural",
+  "zh-TW": "zh-TW-HsiaoChenNeural",
+  "ja":    "ja-JP-NanamiNeural",
+  "ko":    "ko-KR-SunHiNeural",
+  "fr":    "fr-FR-DeniseNeural",
+  "de":    "de-DE-KatjaNeural",
+  "es":    "es-ES-ElviraNeural",
+  "it":    "it-IT-ElsaNeural",
+  "pt":    "pt-BR-FranciscaNeural",
+  "ru":    "ru-RU-SvetlanaNeural",
+  "ar":    "ar-SA-ZariyahNeural",
+  "hi":    "hi-IN-SwaraNeural",
+  "vi":    "vi-VN-HoaiMyNeural",
+  "th":    "th-TH-PremwadeeNeural",
+};
+
+const EDGE_TTS_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+const EDGE_TTS_TIMEOUT_MS = 5000;
+
+function escapeSsml(text) {
+  return String(text).replace(/[<>&'"]/g, (c) => ({
+    "<": "&lt;",
+    ">": "&gt;",
+    "&": "&amp;",
+    "'": "&apos;",
+    '"': "&quot;",
+  }[c]));
+}
+
+function uint8ToBase64(bytes) {
+  let binary = "";
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(
+      null,
+      bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+    );
+  }
+  return btoa(binary);
+}
+
+async function synthesizeWithEdgeTTS(text, lang) {
+  const voice = EDGE_TTS_VOICES[lang];
+  if (!voice || !text) return null;
+
+  const connectionId = crypto.randomUUID().replace(/-/g, "");
+  const wsUrl =
+    `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1` +
+    `?TrustedClientToken=${EDGE_TTS_TOKEN}&ConnectionId=${connectionId}`;
+
+  return new Promise((resolve) => {
+    let ws;
+    const chunks = [];
+    let settled = false;
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      try { ws?.close(); } catch {}
+      resolve(val);
+    };
+    const timer = setTimeout(() => finish(null), EDGE_TTS_TIMEOUT_MS);
+
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+    } catch {
+      clearTimeout(timer);
+      return finish(null);
+    }
+
+    ws.onopen = () => {
+      try {
+        const ts = new Date().toISOString();
+        const config = {
+          context: {
+            synthesis: {
+              audio: {
+                metadataoptions: {
+                  sentenceBoundaryEnabled: false,
+                  wordBoundaryEnabled: false,
+                },
+                outputFormat: "audio-24khz-48kbitrate-mono-mp3",
+              },
+            },
+          },
+        };
+        ws.send(
+          `X-Timestamp:${ts}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n${JSON.stringify(config)}`,
+        );
+
+        const xmlLang = voice.split("-").slice(0, 2).join("-");
+        const ssml =
+          `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${xmlLang}'>` +
+          `<voice name='${voice}'>${escapeSsml(text)}</voice></speak>`;
+        ws.send(
+          `X-RequestId:${connectionId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}\r\nPath:ssml\r\n\r\n${ssml}`,
+        );
+      } catch {
+        finish(null);
+      }
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        if (typeof evt.data === "string") {
+          if (evt.data.includes("Path:turn.end")) {
+            if (chunks.length === 0) return finish(null);
+            const total = chunks.reduce((sum, c) => sum + c.byteLength, 0);
+            const merged = new Uint8Array(total);
+            let offset = 0;
+            for (const c of chunks) {
+              merged.set(new Uint8Array(c), offset);
+              offset += c.byteLength;
+            }
+            finish(`data:audio/mp3;base64,${uint8ToBase64(merged)}`);
+          }
+          return;
+        }
+        const buf = evt.data;
+        if (!(buf instanceof ArrayBuffer) || buf.byteLength < 2) return;
+        const view = new DataView(buf);
+        const headerLen = view.getUint16(0, false);
+        if (buf.byteLength > 2 + headerLen) {
+          chunks.push(buf.slice(2 + headerLen));
+        }
+      } catch {
+        finish(null);
+      }
+    };
+
+    ws.onerror = () => finish(null);
+    ws.onclose = () => {
+      // If turn.end never arrived, the timer / explicit finish handles it.
+    };
+  });
+}
+
+async function buildEdgeTTSSource(text, lang) {
+  const dataUrl = await synthesizeWithEdgeTTS(text, lang);
+  if (!dataUrl) return null;
+  return {
+    url: dataUrl,
+    source: "edge-tts",
+    label: EDGE_TTS_VOICES[lang] || "edge-tts",
+  };
+}
+
 async function getPronunciationPayload(text, langHint) {
   const normalizedText = normalizePronunciationText(text);
   if (!normalizedText) {
@@ -253,17 +405,24 @@ async function getPronunciationPayload(text, langHint) {
   const lang =
     langHint && LANGUAGES[langHint] ? langHint : detectLanguage(normalizedText);
 
-  const dictionarySources =
+  // Real-human dictionary audio (en only) and Edge Neural TTS in parallel —
+  // they're independent network calls.
+  const [dictionarySources, edgeSource] = await Promise.all([
     lang === "en"
-      ? await fetchDictionaryPronunciationSources(normalizedText)
-      : [];
+      ? fetchDictionaryPronunciationSources(normalizedText)
+      : Promise.resolve([]),
+    buildEdgeTTSSource(normalizedText, lang),
+  ]);
+
   const fallbackSources = buildFallbackPronunciationSources(normalizedText, lang);
 
+  // Order: real human (en dict) → Edge Neural → Google TTS fallback.
   return {
     normalizedText,
     lang,
     sources: dedupePronunciationSources([
       ...dictionarySources,
+      ...(edgeSource ? [edgeSource] : []),
       ...fallbackSources,
     ]),
   };
