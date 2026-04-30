@@ -1,6 +1,41 @@
 // OpenDict Chrome Extension — Background Service Worker
 // Handles translation and lookup export
 
+// Language registry — single source of truth for all language codes
+const LANGUAGES = {
+  "en":    { name: "English",                google: "en",    bing: "en",      tts: "en-US", scriptHint: null },
+  "zh-CN": { name: "Chinese (Simplified)",   google: "zh-CN", bing: "zh-Hans", tts: "zh-CN", scriptHint: /[一-鿿]/ },
+  "zh-TW": { name: "Chinese (Traditional)",  google: "zh-TW", bing: "zh-Hant", tts: "zh-TW", scriptHint: /[一-鿿]/ },
+  "ja":    { name: "Japanese",               google: "ja",    bing: "ja",      tts: "ja-JP", scriptHint: /[぀-ヿ]/ },
+  "ko":    { name: "Korean",                 google: "ko",    bing: "ko",      tts: "ko-KR", scriptHint: /[가-힯]/ },
+  "fr":    { name: "French",                 google: "fr",    bing: "fr",      tts: "fr-FR", scriptHint: null },
+  "de":    { name: "German",                 google: "de",    bing: "de",      tts: "de-DE", scriptHint: null },
+  "es":    { name: "Spanish",                google: "es",    bing: "es",      tts: "es-ES", scriptHint: null },
+  "it":    { name: "Italian",                google: "it",    bing: "it",      tts: "it-IT", scriptHint: null },
+  "pt":    { name: "Portuguese",             google: "pt",    bing: "pt",      tts: "pt-BR", scriptHint: null },
+  "ru":    { name: "Russian",                google: "ru",    bing: "ru",      tts: "ru-RU", scriptHint: /[Ѐ-ӿ]/ },
+  "ar":    { name: "Arabic",                 google: "ar",    bing: "ar",      tts: "ar-SA", scriptHint: /[؀-ۿ]/ },
+  "hi":    { name: "Hindi",                  google: "hi",    bing: "hi",      tts: "hi-IN", scriptHint: /[ऀ-ॿ]/ },
+  "vi":    { name: "Vietnamese",             google: "vi",    bing: "vi",      tts: "vi-VN", scriptHint: null },
+  "th":    { name: "Thai",                   google: "th",    bing: "th",      tts: "th-TH", scriptHint: /[฀-๿]/ },
+};
+
+function detectLanguage(text) {
+  const sample = String(text || "").trim();
+  if (!sample) return "en";
+  for (const [code, meta] of Object.entries(LANGUAGES)) {
+    if (meta.scriptHint && meta.scriptHint.test(sample)) return code;
+  }
+  return "en";
+}
+
+function resolveSourceLang(text, configuredSource) {
+  if (configuredSource && configuredSource !== "auto" && LANGUAGES[configuredSource]) {
+    return configuredSource;
+  }
+  return detectLanguage(text);
+}
+
 // Default config
 const DEFAULT_CONFIG = {
   baseUrl: "https://api.openai.com/v1",
@@ -9,6 +44,8 @@ const DEFAULT_CONFIG = {
   translationSource: "ai", // ai | google | microsoft
   triggerShortcut: "Ctrl+Q",
   exportFormat: "tsv",
+  sourceLanguage: "auto",   // "auto" or LANGUAGES key
+  targetLanguage: "zh-CN",  // LANGUAGES key
 };
 
 const CONFIG_KEY = "opendict_config";
@@ -37,6 +74,8 @@ function buildSyncConfig(config = {}) {
     translationSource: config.translationSource || DEFAULT_CONFIG.translationSource,
     triggerShortcut: config.triggerShortcut || DEFAULT_CONFIG.triggerShortcut,
     exportFormat: config.exportFormat || DEFAULT_CONFIG.exportFormat,
+    sourceLanguage: config.sourceLanguage || DEFAULT_CONFIG.sourceLanguage,
+    targetLanguage: config.targetLanguage || DEFAULT_CONFIG.targetLanguage,
   };
 }
 
@@ -100,12 +139,11 @@ function getPronunciationRegionRank(candidate) {
   return 3;
 }
 
-function buildFallbackPronunciationSources(text) {
+function buildFallbackPronunciationSources(text, lang) {
   const encoded = encodeURIComponent(text);
-  const singleWord = isDictionaryWord(text);
   const sources = [];
 
-  if (singleWord) {
+  if (lang === "en" && isDictionaryWord(text)) {
     sources.push(
       {
         url: `https://dict.youdao.com/dictvoice?audio=${encoded}&type=2`,
@@ -120,18 +158,27 @@ function buildFallbackPronunciationSources(text) {
     );
   }
 
-  sources.push(
-    {
-      url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-us&client=tw-ob`,
+  if (lang === "en") {
+    sources.push(
+      {
+        url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-us&client=tw-ob`,
+        source: "google-tts",
+        label: "google-us",
+      },
+      {
+        url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-gb&client=tw-ob`,
+        source: "google-tts",
+        label: "google-uk",
+      },
+    );
+  } else {
+    const tl = LANGUAGES[lang]?.google || "en";
+    sources.push({
+      url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${tl}&client=tw-ob`,
       source: "google-tts",
-      label: "google-us",
-    },
-    {
-      url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-gb&client=tw-ob`,
-      source: "google-tts",
-      label: "google-uk",
-    },
-  );
+      label: `google-${tl}`,
+    });
+  }
 
   return sources;
 }
@@ -197,18 +244,24 @@ async function fetchDictionaryPronunciationSources(text) {
   return [];
 }
 
-async function getPronunciationPayload(text) {
+async function getPronunciationPayload(text, langHint) {
   const normalizedText = normalizePronunciationText(text);
   if (!normalizedText) {
-    return { normalizedText: "", sources: [] };
+    return { normalizedText: "", sources: [], lang: "en" };
   }
 
+  const lang =
+    langHint && LANGUAGES[langHint] ? langHint : detectLanguage(normalizedText);
+
   const dictionarySources =
-    await fetchDictionaryPronunciationSources(normalizedText);
-  const fallbackSources = buildFallbackPronunciationSources(normalizedText);
+    lang === "en"
+      ? await fetchDictionaryPronunciationSources(normalizedText)
+      : [];
+  const fallbackSources = buildFallbackPronunciationSources(normalizedText, lang);
 
   return {
     normalizedText,
+    lang,
     sources: dedupePronunciationSources([
       ...dictionarySources,
       ...fallbackSources,
@@ -239,7 +292,13 @@ async function getConfig() {
 async function translateWithAI(text, context, config) {
   if (!config.apiKey) return { error: "请先在插件设置中配置 AI API Key" };
 
-  const isWord = /^[a-zA-Z'-]+$/.test(text.trim());
+  const isWord = /^\p{L}[\p{L}\p{M}'’\-]*$/u.test(text.trim());
+  const sourceLang = resolveSourceLang(text, config.sourceLanguage);
+  const targetLang = config.targetLanguage && LANGUAGES[config.targetLanguage]
+    ? config.targetLanguage
+    : "zh-CN";
+  const sourceLangName = LANGUAGES[sourceLang]?.name || "the source language";
+  const targetLangName = LANGUAGES[targetLang]?.name || "Chinese";
   let prompt;
 
   if (isWord) {
@@ -247,16 +306,16 @@ async function translateWithAI(text, context, config) {
       ? `\nContext: "...${context.trim()}..."\nExplain the word "${text}" as used in this context.`
       : `\nWord: "${text}"`;
 
-    prompt = `You are a concise English-Chinese dictionary. ${contextInstruction}
+    prompt = `You are a concise ${sourceLangName}-${targetLangName} dictionary. ${contextInstruction}
 Provide a JSON response with these keys:
-- "phonetic": IPA pronunciation (US)
-- "pos": Part of speech (abbr. like n., vt., adj.)
-- "meaning": Chinese translation (brief, context-appropriate)
-- "example": String. English example + Chinese translation (e.g. "Example. | 翻译。")
-- "definition": English definition
+- "phonetic": Phonetic representation appropriate for ${sourceLangName} (IPA for European languages, pinyin with tone marks for Chinese, romaji for Japanese, romanization for Korean, etc.). Empty string if not applicable.
+- "pos": Part of speech (e.g. n., v., adj.). Use the abbreviation conventional in ${targetLangName} when available, otherwise English.
+- "meaning": Brief translation in ${targetLangName}, context-appropriate.
+- "example": A short example in ${sourceLangName}, then " | ", then its translation in ${targetLangName}.
+- "definition": A short definition written in ${sourceLangName}.
 Output only valid JSON.`;
   } else {
-    prompt = `Translate the following text to Chinese. Return a JSON object with a single key "translation".
+    prompt = `Translate the following ${sourceLangName} text to ${targetLangName}. Return a JSON object with a single key "translation".
 
 "${text}"`;
   }
@@ -302,9 +361,14 @@ Output only valid JSON.`;
   }
 }
 
-async function translateWithGoogle(text) {
+async function translateWithGoogle(text, sourceLang, targetLang) {
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text)}`;
+    const sl =
+      sourceLang && sourceLang !== "auto" && LANGUAGES[sourceLang]
+        ? LANGUAGES[sourceLang].google
+        : "auto";
+    const tl = LANGUAGES[targetLang]?.google || "zh-CN";
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
     const resp = await fetch(url);
     if (!resp.ok) {
       return { error: `Google API Error ${resp.status}` };
@@ -322,11 +386,11 @@ async function translateWithGoogle(text) {
   }
 }
 
-async function translateWithMicrosoft(text) {
+async function translateWithMicrosoft(text, sourceLang, targetLang) {
   try {
     const pageResp = await fetch("https://www.bing.com/translator");
     if (!pageResp.ok) {
-      return translateWithGoogle(text);
+      return translateWithGoogle(text, sourceLang, targetLang);
     }
 
     const html = await pageResp.text();
@@ -335,16 +399,22 @@ async function translateWithMicrosoft(text) {
     );
     const igMatch = html.match(/IG:"([A-Z0-9]+)"/);
     if (!tokenMatch || !igMatch) {
-      return translateWithGoogle(text);
+      return translateWithGoogle(text, sourceLang, targetLang);
     }
 
     const key = tokenMatch[1];
     const token = tokenMatch[2];
     const ig = igMatch[1];
 
+    const fromLang =
+      sourceLang && sourceLang !== "auto" && LANGUAGES[sourceLang]
+        ? LANGUAGES[sourceLang].bing
+        : "auto-detect";
+    const toLang = LANGUAGES[targetLang]?.bing || "zh-Hans";
+
     const form = new URLSearchParams();
-    form.set("fromLang", "auto-detect");
-    form.set("to", "zh-Hans");
+    form.set("fromLang", fromLang);
+    form.set("to", toLang);
     form.set("text", text);
     form.set("token", token);
     form.set("key", key);
@@ -360,23 +430,25 @@ async function translateWithMicrosoft(text) {
       },
     );
 
-    if (!resp.ok) return translateWithGoogle(text);
+    if (!resp.ok) return translateWithGoogle(text, sourceLang, targetLang);
 
     const data = await resp.json();
-    if (data?.ShowCaptcha) return translateWithGoogle(text);
+    if (data?.ShowCaptcha) return translateWithGoogle(text, sourceLang, targetLang);
 
     const translation = data?.[0]?.translations?.[0]?.text?.trim();
-    if (!translation) return translateWithGoogle(text);
+    if (!translation) return translateWithGoogle(text, sourceLang, targetLang);
     return { translation };
   } catch (e) {
-    return translateWithGoogle(text);
+    return translateWithGoogle(text, sourceLang, targetLang);
   }
 }
 
 async function translateText(text, context, config) {
   const source = (config.translationSource || "ai").toLowerCase();
-  if (source === "google") return translateWithGoogle(text);
-  if (source === "microsoft") return translateWithMicrosoft(text);
+  const sourceLang = config.sourceLanguage || "auto";
+  const targetLang = config.targetLanguage || "zh-CN";
+  if (source === "google") return translateWithGoogle(text, sourceLang, targetLang);
+  if (source === "microsoft") return translateWithMicrosoft(text, sourceLang, targetLang);
   return translateWithAI(text, context, config);
 }
 
@@ -394,7 +466,7 @@ function getExportMeaning(result) {
   return "";
 }
 
-async function saveHistoryRecord(text, result, source) {
+async function saveHistoryRecord(text, result, source, targetLanguage) {
   const meaning = getExportMeaning(result);
   if (!text || !meaning || result?.error) return;
 
@@ -402,6 +474,7 @@ async function saveHistoryRecord(text, result, source) {
     text: text.trim(),
     meaning,
     source: source || "ai",
+    targetLanguage: targetLanguage || "zh-CN",
     timestamp: Date.now(),
   };
 
@@ -561,8 +634,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         msg.text,
         msg.result,
         config.translationSource || "ai",
+        config.targetLanguage || "zh-CN",
       );
       sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  if (msg.type === "opendict-get-config") {
+    (async () => {
+      const config = await getConfig();
+      sendResponse({
+        sourceLanguage: config.sourceLanguage || "auto",
+        targetLanguage: config.targetLanguage || "zh-CN",
+        translationSource: config.translationSource || "ai",
+      });
     })();
     return true;
   }
@@ -580,7 +666,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "opendict-get-pronunciation-sources") {
     (async () => {
-      const payload = await getPronunciationPayload(msg.text);
+      const payload = await getPronunciationPayload(msg.text, msg.lang);
       sendResponse(payload);
     })();
     return true;

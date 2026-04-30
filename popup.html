@@ -152,6 +152,14 @@
 
       .model-row select { flex: 1; min-width: 0; }
 
+      .lang-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .lang-row label { margin-top: 12px; }
+      .lang-row select { width: 100%; }
+
       .model-row .icon-btn {
         flex: 0 0 auto;
         width: 28px; height: 28px;
@@ -253,6 +261,17 @@
         <option value="google">Google Translation</option>
         <option value="microsoft">Microsoft Translation</option>
       </select>
+
+      <div class="lang-row">
+        <div>
+          <label for="sourceLanguage">Source Language</label>
+          <select id="sourceLanguage"></select>
+        </div>
+        <div>
+          <label for="targetLanguage">Target Language</label>
+          <select id="targetLanguage"></select>
+        </div>
+      </div>
 
       <div id="aiFields">
         <label for="baseUrl">API Base URL</label>

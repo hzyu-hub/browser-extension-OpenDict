@@ -10,12 +10,58 @@ document.addEventListener("DOMContentLoaded", () => {
   const aiFields = document.getElementById("aiFields");
   const aiActions = document.getElementById("aiActions");
   const translationSource = document.getElementById("translationSource");
+  const sourceLanguage = document.getElementById("sourceLanguage");
+  const targetLanguage = document.getElementById("targetLanguage");
   const triggerShortcut = document.getElementById("triggerShortcut");
   const exportFormat = document.getElementById("exportFormat");
   const saveBtn = document.getElementById("save");
   const testBtn = document.getElementById("test");
   const exportBtn = document.getElementById("export");
   const status = document.getElementById("status");
+
+  // Language list — keep in sync with background.js LANGUAGES
+  const LANGUAGE_OPTIONS = [
+    { code: "en",    name: "English" },
+    { code: "zh-CN", name: "Chinese (Simplified)" },
+    { code: "zh-TW", name: "Chinese (Traditional)" },
+    { code: "ja",    name: "Japanese" },
+    { code: "ko",    name: "Korean" },
+    { code: "fr",    name: "French" },
+    { code: "de",    name: "German" },
+    { code: "es",    name: "Spanish" },
+    { code: "it",    name: "Italian" },
+    { code: "pt",    name: "Portuguese" },
+    { code: "ru",    name: "Russian" },
+    { code: "ar",    name: "Arabic" },
+    { code: "hi",    name: "Hindi" },
+    { code: "vi",    name: "Vietnamese" },
+    { code: "th",    name: "Thai" },
+  ];
+
+  function populateLanguageSelects() {
+    // Source: includes Auto
+    sourceLanguage.innerHTML = "";
+    const autoOpt = document.createElement("option");
+    autoOpt.value = "auto";
+    autoOpt.textContent = "Auto-detect";
+    sourceLanguage.appendChild(autoOpt);
+    for (const { code, name } of LANGUAGE_OPTIONS) {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      sourceLanguage.appendChild(opt);
+    }
+    // Target: no Auto
+    targetLanguage.innerHTML = "";
+    for (const { code, name } of LANGUAGE_OPTIONS) {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = name;
+      targetLanguage.appendChild(opt);
+    }
+  }
+
+  populateLanguageSelects();
 
   const DEFAULTS = {
     baseUrl: "https://api.openai.com/v1",
@@ -24,6 +70,8 @@ document.addEventListener("DOMContentLoaded", () => {
     translationSource: "ai",
     triggerShortcut: "Ctrl+Q",
     exportFormat: "tsv",
+    sourceLanguage: "auto",
+    targetLanguage: "zh-CN",
   };
 
   function applySourceLayout() {
@@ -123,6 +171,8 @@ document.addEventListener("DOMContentLoaded", () => {
       translationSource: config.translationSource || DEFAULTS.translationSource,
       triggerShortcut: normalizeShortcut(config.triggerShortcut),
       exportFormat: config.exportFormat || DEFAULTS.exportFormat,
+      sourceLanguage: config.sourceLanguage || DEFAULTS.sourceLanguage,
+      targetLanguage: config.targetLanguage || DEFAULTS.targetLanguage,
     };
   }
 
@@ -134,6 +184,8 @@ document.addEventListener("DOMContentLoaded", () => {
       translationSource: translationSource.value || DEFAULTS.translationSource,
       triggerShortcut: normalizeShortcut(triggerShortcut.value),
       exportFormat: exportFormat.value || DEFAULTS.exportFormat,
+      sourceLanguage: sourceLanguage.value || DEFAULTS.sourceLanguage,
+      targetLanguage: targetLanguage.value || DEFAULTS.targetLanguage,
     };
   }
 
@@ -193,6 +245,8 @@ document.addEventListener("DOMContentLoaded", () => {
     apiKey.value = cfg.apiKey;
     setModelOptions([DEFAULTS.model], cfg.model || DEFAULTS.model);
     translationSource.value = cfg.translationSource;
+    sourceLanguage.value = cfg.sourceLanguage || DEFAULTS.sourceLanguage;
+    targetLanguage.value = cfg.targetLanguage || DEFAULTS.targetLanguage;
     triggerShortcut.value = safeShortcut;
     exportFormat.value = cfg.exportFormat || DEFAULTS.exportFormat;
     applySourceLayout();
@@ -271,6 +325,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 1200);
     });
   });
+
+  function persistLanguageChange(label) {
+    const config = getCurrentConfigFromUI();
+    saveConfig(config, () => {
+      showStatus(`${label} updated`, "success");
+      setTimeout(() => {
+        status.textContent = "";
+      }, 1200);
+    });
+  }
+
+  sourceLanguage.addEventListener("change", () => persistLanguageChange("Source language"));
+  targetLanguage.addEventListener("change", () => persistLanguageChange("Target language"));
 
   triggerShortcut.addEventListener("keydown", (e) => {
     if (e.key === "Tab") return;

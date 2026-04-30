@@ -20,6 +20,92 @@
   const pronunciationCache = new Map();
   const pronunciationFetches = new Map();
 
+  // Minimal language registry — content-side only needs TTS code + script hint.
+  const LANG_TTS = {
+    "en": "en-US",
+    "zh-CN": "zh-CN",
+    "zh-TW": "zh-TW",
+    "ja": "ja-JP",
+    "ko": "ko-KR",
+    "fr": "fr-FR",
+    "de": "de-DE",
+    "es": "es-ES",
+    "it": "it-IT",
+    "pt": "pt-BR",
+    "ru": "ru-RU",
+    "ar": "ar-SA",
+    "hi": "hi-IN",
+    "vi": "vi-VN",
+    "th": "th-TH",
+  };
+  const LANG_GOOGLE_TTS = {
+    "en": "en-us",
+    "zh-CN": "zh-CN",
+    "zh-TW": "zh-TW",
+    "ja": "ja",
+    "ko": "ko",
+    "fr": "fr",
+    "de": "de",
+    "es": "es",
+    "it": "it",
+    "pt": "pt",
+    "ru": "ru",
+    "ar": "ar",
+    "hi": "hi",
+    "vi": "vi",
+    "th": "th",
+  };
+  const SCRIPT_HINTS = [
+    ["zh-CN", /[一-鿿]/],
+    ["ja", /[぀-ヿ]/],
+    ["ko", /[가-힯]/],
+    ["ru", /[Ѐ-ӿ]/],
+    ["ar", /[؀-ۿ]/],
+    ["hi", /[ऀ-ॿ]/],
+    ["th", /[฀-๿]/],
+  ];
+
+  let userConfig = {
+    sourceLanguage: "auto",
+    targetLanguage: "zh-CN",
+  };
+
+  function detectLangFromText(text) {
+    const sample = String(text || "").trim();
+    if (!sample) return "en";
+    for (const [code, regex] of SCRIPT_HINTS) {
+      if (regex.test(sample)) return code;
+    }
+    return "en";
+  }
+
+  function resolveLang(text) {
+    const configured = userConfig.sourceLanguage;
+    if (configured && configured !== "auto" && LANG_TTS[configured]) {
+      return configured;
+    }
+    return detectLangFromText(text);
+  }
+
+  function refreshConfig() {
+    try {
+      chrome.runtime.sendMessage({ type: "opendict-get-config" }, (resp) => {
+        if (chrome.runtime.lastError || !resp) return;
+        if (resp.sourceLanguage) userConfig.sourceLanguage = resp.sourceLanguage;
+        if (resp.targetLanguage) userConfig.targetLanguage = resp.targetLanguage;
+      });
+    } catch {}
+  }
+
+  refreshConfig();
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "sync" && changes.opendict_config) {
+        refreshConfig();
+      }
+    });
+  } catch {}
+
   function escapeHtml(text) {
     if (!text) return "";
     return String(text)
@@ -80,9 +166,11 @@
     if (!key) return Promise.resolve(null);
     if (pronunciationFetches.has(key)) return pronunciationFetches.get(key);
 
+    const lang = resolveLang(normalizedText);
+
     const request = new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { type: "opendict-get-pronunciation-sources", text: normalizedText },
+        { type: "opendict-get-pronunciation-sources", text: normalizedText, lang },
         (response) => {
           if (chrome.runtime.lastError || !response) {
             resolve(null);
@@ -121,25 +209,32 @@
     return /^[A-Za-z]+(?:[.'’-][A-Za-z]+)*$/.test(text);
   }
 
-  function buildImmediatePronunciationSources(text) {
+  function buildImmediatePronunciationSources(text, lang) {
     const encoded = encodeURIComponent(text);
     const sources = [];
 
-    if (isDictionaryWord(text)) {
+    if (lang === "en" && isDictionaryWord(text)) {
       sources.push(
         { url: `https://dict.youdao.com/dictvoice?audio=${encoded}&type=2` },
         { url: `https://dict.youdao.com/dictvoice?audio=${encoded}&type=1` },
       );
     }
 
-    sources.push(
-      {
-        url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-us&client=tw-ob`,
-      },
-      {
-        url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-gb&client=tw-ob`,
-      },
-    );
+    if (lang === "en") {
+      sources.push(
+        {
+          url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-us&client=tw-ob`,
+        },
+        {
+          url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=en-gb&client=tw-ob`,
+        },
+      );
+    } else {
+      const tl = LANG_GOOGLE_TTS[lang] || "en-us";
+      sources.push({
+        url: `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${tl}&client=tw-ob`,
+      });
+    }
 
     return sources;
   }
@@ -260,6 +355,7 @@
 
     stopCurrentAudio();
     const playToken = audioPlayToken;
+    const lang = resolveLang(normalizedText);
 
     let payload = getCachedPronunciationPayload(normalizedText);
     if (!payload) {
@@ -268,14 +364,15 @@
       void fetchPronunciationPayload(normalizedText);
       payload = {
         normalizedText,
-        sources: buildImmediatePronunciationSources(normalizedText),
+        lang,
+        sources: buildImmediatePronunciationSources(normalizedText, lang),
       };
     }
 
     const sources = Array.isArray(payload?.sources) ? payload.sources : [];
     const started = await playAudioSources(sources, playToken);
     if (!started && playToken === audioPlayToken) {
-      fallbackSpeak(normalizedText, playToken);
+      fallbackSpeak(normalizedText, playToken, payload?.lang || lang);
     }
   }
 
@@ -345,18 +442,22 @@
     });
   }
 
-  function scoreVoice(voice) {
+  function scoreVoice(voice, targetLang) {
     const name = String(voice?.name || "").toLowerCase();
-    const lang = String(voice?.lang || "").toLowerCase();
+    const voiceLang = String(voice?.lang || "").toLowerCase();
+    const target = String(targetLang || "").toLowerCase();
     let score = 0;
 
-    if (lang === "en-us") score += 80;
-    else if (lang.startsWith("en-us")) score += 75;
-    else if (lang === "en-gb") score += 70;
-    else if (lang.startsWith("en")) score += 50;
+    if (voiceLang === target) score += 80;
+    else if (voiceLang.startsWith(target)) score += 70;
+    else {
+      const targetPrimary = target.split("-")[0];
+      const voicePrimary = voiceLang.split("-")[0];
+      if (targetPrimary && voicePrimary === targetPrimary) score += 50;
+    }
 
     if (
-      /microsoft|natural|premium|enhanced|samantha|ava|allison|karen|serena|daniel|alex|google us english|google uk english/.test(
+      /microsoft|natural|premium|enhanced|samantha|ava|allison|karen|serena|daniel|alex|google/.test(
         name,
       )
     ) {
@@ -370,20 +471,27 @@
     return score;
   }
 
-  function fallbackSpeak(text, playToken) {
+  function fallbackSpeak(text, playToken, lang) {
+    const langCode = lang || "en";
+    const ttsLang = LANG_TTS[langCode] || "en-US";
+
     const speak = () => {
       if (playToken !== audioPlayToken) return;
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = window.speechSynthesis.getVoices();
+      const primary = ttsLang.split("-")[0].toLowerCase();
       const voice = [...voices]
-        .filter((item) => String(item?.lang || "").toLowerCase().startsWith("en"))
-        .sort((a, b) => scoreVoice(b) - scoreVoice(a))[0];
+        .filter((item) => {
+          const vl = String(item?.lang || "").toLowerCase();
+          return vl === ttsLang.toLowerCase() || vl.startsWith(primary);
+        })
+        .sort((a, b) => scoreVoice(b, ttsLang) - scoreVoice(a, ttsLang))[0];
 
       if (voice) {
         utterance.voice = voice;
         utterance.lang = voice.lang;
       } else {
-        utterance.lang = "en-US";
+        utterance.lang = ttsLang;
       }
 
       utterance.rate = 0.88;
