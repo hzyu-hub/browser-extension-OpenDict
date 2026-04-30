@@ -312,7 +312,8 @@ Provide a JSON response with these keys:
 - "pos": Part of speech (e.g. n., v., adj.). Use the abbreviation conventional in ${targetLangName} when available, otherwise English.
 - "meaning": Brief translation in ${targetLangName}, context-appropriate.
 - "example": A short example in ${sourceLangName}, then " | ", then its translation in ${targetLangName}.
-- "definition": A short definition written in ${sourceLangName}.
+- "definition": A short definition written in ${targetLangName} (so the reader can fully understand the word in their preferred language).
+All natural-language output (pos, meaning, definition, and the second half of example) MUST be written in ${targetLangName}. Do not output ${sourceLangName} for these fields.
 Output only valid JSON.`;
   } else {
     prompt = `Translate the following ${sourceLangName} text to ${targetLangName}. Return a JSON object with a single key "translation".
