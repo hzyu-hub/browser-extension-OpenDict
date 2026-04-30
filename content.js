@@ -140,13 +140,16 @@
       .trim();
   }
 
-  function getPronunciationCacheKey(text) {
-    return normalizePronunciationText(text).toLowerCase();
+  function getPronunciationCacheKey(text, lang) {
+    const norm = normalizePronunciationText(text).toLowerCase();
+    if (!norm) return "";
+    return lang ? `${lang}::${norm}` : norm;
   }
 
-  function cachePronunciationPayload(payload) {
+  function cachePronunciationPayload(payload, lang) {
     if (!payload?.normalizedText) return;
-    const key = getPronunciationCacheKey(payload.normalizedText);
+    const cacheLang = lang || payload.lang || "";
+    const key = getPronunciationCacheKey(payload.normalizedText, cacheLang);
     if (!key) return;
     pronunciationCache.set(key, payload);
     if (pronunciationCache.size > 200) {
@@ -155,18 +158,20 @@
     }
   }
 
-  function getCachedPronunciationPayload(text) {
-    const key = getPronunciationCacheKey(text);
+  function getCachedPronunciationPayload(text, lang) {
+    const key = getPronunciationCacheKey(text, lang);
     return key ? pronunciationCache.get(key) : null;
   }
 
-  function fetchPronunciationPayload(text) {
+  function fetchPronunciationPayload(text, langOverride) {
     const normalizedText = normalizePronunciationText(text);
-    const key = getPronunciationCacheKey(normalizedText);
+    const lang =
+      langOverride && LANG_TTS[langOverride]
+        ? langOverride
+        : resolveLang(normalizedText);
+    const key = getPronunciationCacheKey(normalizedText, lang);
     if (!key) return Promise.resolve(null);
     if (pronunciationFetches.has(key)) return pronunciationFetches.get(key);
-
-    const lang = resolveLang(normalizedText);
 
     const request = new Promise((resolve) => {
       chrome.runtime.sendMessage(
@@ -176,7 +181,7 @@
             resolve(null);
             return;
           }
-          cachePronunciationPayload(response);
+          cachePronunciationPayload(response, lang);
           resolve(response);
         },
       );
@@ -188,10 +193,15 @@
     return request;
   }
 
-  function prefetchPronunciation(text) {
+  function prefetchPronunciation(text, langOverride) {
     const normalizedText = normalizePronunciationText(text);
-    if (!normalizedText || getCachedPronunciationPayload(normalizedText)) return;
-    void fetchPronunciationPayload(normalizedText);
+    if (!normalizedText) return;
+    const lang =
+      langOverride && LANG_TTS[langOverride]
+        ? langOverride
+        : resolveLang(normalizedText);
+    if (getCachedPronunciationPayload(normalizedText, lang)) return;
+    void fetchPronunciationPayload(normalizedText, lang);
   }
 
   function stopCurrentAudio() {
@@ -349,19 +359,22 @@
     });
   }
 
-  async function playAudio(text) {
+  async function playAudio(text, langOverride) {
     const normalizedText = normalizePronunciationText(text);
     if (!normalizedText) return;
 
     stopCurrentAudio();
     const playToken = audioPlayToken;
-    const lang = resolveLang(normalizedText);
+    const lang =
+      langOverride && LANG_TTS[langOverride]
+        ? langOverride
+        : resolveLang(normalizedText);
 
-    let payload = getCachedPronunciationPayload(normalizedText);
+    let payload = getCachedPronunciationPayload(normalizedText, lang);
     if (!payload) {
       // Keep playback on the original click gesture: do not await remote lookup
       // before the first play() call, or Chrome may block audio as autoplay.
-      void fetchPronunciationPayload(normalizedText);
+      void fetchPronunciationPayload(normalizedText, lang);
       payload = {
         normalizedText,
         lang,
@@ -550,11 +563,23 @@
       return;
     }
 
+    const sourceWord = String(word || "").trim();
+    const targetWord = String(data.word || data.meaning || sourceWord).trim();
+    const sameWord = sourceWord.toLowerCase() === targetWord.toLowerCase();
+    const audioLang =
+      (userConfig.targetLanguage && LANG_TTS[userConfig.targetLanguage])
+        ? userConfig.targetLanguage
+        : null;
+
     const headerWordRow = popup.querySelector(".opendict-word-row");
     if (headerWordRow) {
-      prefetchPronunciation(word);
+      prefetchPronunciation(targetWord, audioLang);
+      const sourcePart = sameWord
+        ? ""
+        : `<span class="opendict-source-word">${escapeHtml(sourceWord)}</span><span class="opendict-arrow">→</span>`;
       headerWordRow.innerHTML = `
-        <span class="opendict-word">${escapeHtml(word)}</span>
+        ${sourcePart}
+        <span class="opendict-word">${escapeHtml(targetWord)}</span>
         <div class="opendict-phonetic-group">
           <span class="opendict-phonetic">${escapeHtml(data.phonetic || "")}</span>
           <button class="opendict-icon-btn opendict-audio" title="Play pronunciation">
@@ -562,13 +587,15 @@
           </button>
         </div>
       `;
-      popup.querySelector(".opendict-audio")?.addEventListener("click", () => playAudio(word));
+      popup.querySelector(".opendict-audio")?.addEventListener(
+        "click",
+        () => playAudio(targetWord, audioLang),
+      );
     }
 
     body.innerHTML = `
-      <div class="opendict-row opendict-pos-meaning">
+      <div class="opendict-row opendict-pos-only">
         <span class="opendict-pos">${escapeHtml(data.pos || "")}</span>
-        <span>${escapeHtml(data.meaning || "")}</span>
       </div>
 
       <div class="opendict-row opendict-section">
@@ -581,11 +608,17 @@
         <div class="opendict-example">${(() => {
           const ex = data.example;
           if (!ex) return "";
-          if (typeof ex === "string") return escapeHtml(ex);
+          if (typeof ex === "string") {
+            // Strip legacy " | translation" form if AI accidentally returned bilingual.
+            const idx = ex.indexOf(" | ");
+            const targetOnly = idx >= 0 ? ex.slice(idx + 3) : ex;
+            return escapeHtml(targetOnly.trim());
+          }
           if (typeof ex === "object") {
-            const en = ex.en || ex.english || ex.sentence || "";
-            const cn = ex.cn || ex.zh || ex.chinese || ex.meaning || "";
-            return escapeHtml((en && cn) ? `${en} | ${cn}` : (en || cn || JSON.stringify(ex)));
+            // Legacy bilingual object: prefer the target half.
+            const target = ex.target || ex.translation || ex.cn || ex.zh || ex.ja || ex.ko || ex.meaning || "";
+            const fallback = ex.en || ex.english || ex.sentence || "";
+            return escapeHtml(target || fallback || "");
           }
           return "";
         })()}</div>
@@ -601,7 +634,7 @@
     saveBtn.addEventListener("click", () => {
       chrome.runtime.sendMessage({
         type: "opendict-save-history",
-        text: word,
+        text: sourceWord,
         result: data,
       }, (resp) => {
         if (resp?.ok) {

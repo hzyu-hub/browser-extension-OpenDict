@@ -306,14 +306,22 @@ async function translateWithAI(text, context, config) {
       ? `\nContext: "...${context.trim()}..."\nExplain the word "${text}" as used in this context.`
       : `\nWord: "${text}"`;
 
-    prompt = `You are a concise ${sourceLangName}-${targetLangName} dictionary. ${contextInstruction}
-Provide a JSON response with these keys:
-- "phonetic": Phonetic representation appropriate for ${sourceLangName} (IPA for European languages, pinyin with tone marks for Chinese, romaji for Japanese, romanization for Korean, etc.). Empty string if not applicable.
-- "pos": Part of speech (e.g. n., v., adj.). Use the abbreviation conventional in ${targetLangName} when available, otherwise English.
-- "meaning": Brief translation in ${targetLangName}, context-appropriate.
-- "example": A short example in ${sourceLangName}, then " | ", then its translation in ${targetLangName}.
-- "definition": A short definition written in ${targetLangName} (so the reader can fully understand the word in their preferred language).
-All natural-language output (pos, meaning, definition, and the second half of example) MUST be written in ${targetLangName}. Do not output ${sourceLangName} for these fields.
+    prompt = `You are a concise ${targetLangName} monolingual dictionary.
+The user looked up the ${sourceLangName} word "${text}". ${contextInstruction}
+
+Step 1: Translate "${text}" into the most natural single-word ${targetLangName} equivalent in this context.
+Step 2: Provide a ${targetLangName} dictionary entry for that translated word.
+
+If "${text}" is already in ${targetLangName}, skip step 1 — just produce the entry for "${text}".
+
+Return JSON with these keys:
+- "word": The ${targetLangName} headword (the translation, or the original if same language).
+- "phonetic": Phonetic representation of "word" in the convention native to ${targetLangName} (IPA for European languages; pinyin with tone marks for Chinese; hiragana + romaji for Japanese; Hangul + romanization for Korean; etc.). Empty string if not applicable.
+- "pos": Part of speech, abbreviated. Use ${targetLangName} convention if available, else English (n., v., adj.).
+- "definition": A short definition of "word", written entirely in ${targetLangName}.
+- "example": One natural example sentence using "word", written entirely in ${targetLangName}. No bilingual content. No ${sourceLangName} text in this field.
+
+All natural-language output (pos, definition, example) MUST be ${targetLangName} only. Do not include any ${sourceLangName} text in those fields.
 Output only valid JSON.`;
   } else {
     prompt = `Translate the following ${sourceLangName} text to ${targetLangName}. Return a JSON object with a single key "translation".
@@ -457,7 +465,15 @@ function getExportMeaning(result) {
   if (!result || result.error) return "";
   if (typeof result.translation === "string" && result.translation.trim())
     return result.translation.trim();
+  if (typeof result.word === "string" && result.word.trim()) {
+    const definition =
+      typeof result.definition === "string" ? result.definition.trim() : "";
+    return definition
+      ? `${result.word.trim()} | ${definition}`
+      : result.word.trim();
+  }
   if (typeof result.meaning === "string" && result.meaning.trim()) {
+    // legacy schema fallback (pre-v0.6.0 cached responses)
     const definition =
       typeof result.definition === "string" ? result.definition.trim() : "";
     return definition

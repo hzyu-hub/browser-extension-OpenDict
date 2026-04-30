@@ -59,6 +59,22 @@
     text-overflow: ellipsis;
 }
 
+.opendict-source-word {
+    font-size: 13px;
+    font-weight: 400;
+    color: #94a3b8;
+    white-space: nowrap;
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.opendict-arrow {
+    font-size: 13px;
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+
 .opendict-phonetic-group {
     display: flex;
     align-items: center;
@@ -124,7 +140,8 @@
 }
 
 /* Row 1: POS + Meaning */
-.opendict-pos-meaning {
+.opendict-pos-meaning,
+.opendict-pos-only {
     font-size: 15px;
     color: #1e293b;
     line-height: 1.4;
