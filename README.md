@@ -5,220 +5,224 @@
 </p>
 
 <p align="center">
-  <b>轻量级 Chrome 翻译插件，选词即译，多语言互译，支持 AI / Google / Microsoft 三大翻译源</b>
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
-  Chrome Extension · Manifest V3 · 无需注册即可使用
+  <b>Lightweight Chrome translation extension — select text, get instant translations across 15 languages, with AI-powered dictionary entries, neural TTS, and a built-in PDF reader.</b>
+</p>
+
+<p align="center">
+  Chrome Extension · Manifest V3 · No signup required
 </p>
 
 ---
 
-## ✨ 功能特性
+## ✨ Features
 
-- **三种翻译源**：AI（OpenAI 兼容）、Google 翻译、Microsoft 翻译
-- **多语言互译**：源/目标语言独立可选，源语言支持 Auto-detect，覆盖英、中（简/繁）、日、韩、法、德、西、意、葡、俄、阿、印地、越、泰共 15 种
-- **目标语单语词典**：AI 模式以**目标语**为主体——目标词、目标语音标、目标语定义、目标语例句、目标词发音；源词以小字+箭头方式同行展示，提示你刚查的是什么
-- **真人级发音**：英文走 DictionaryAPI / 有道真人录音；其他语言走 Microsoft Edge Neural TTS（神经合成、接近真人），全部音源失败时仍有 Web Speech 兜底
-- **快捷键触发**：浏览器级快捷键，默认 `Ctrl+Q`（Chrome Commands API）
-- **拖拽移动**：翻译悬浮框可自由拖动
-- **手动收藏**：翻译单词后按需存入生词本，选择权完全交给用户
-- **多格式导出**：TSV / CSV / TXT / Anki 格式，可直接导入 Anki 等记忆软件
-- **支持自定义 API**：兼容所有 OpenAI 格式的 API 端点（DeepSeek、Moonshot、本地模型等）
-- **PDF 内置阅读器**：自动拦截 PDF 页面，使用内置 PDF.js 渲染，支持文本选中翻译、缩放、页码导航
-- **PDF 侧边栏目录**：自动提取 PDF 大纲，点击章节标题快速跳转
-- **PDF 护眼模式**：一键切换暖色调滤镜，降低蓝光，长时间阅读更舒适
-- **PDF 智能缩放**：CSS transform 即时缩放 + 延迟高清重渲染，零闪烁流畅体验
-
----
-
-## 📸 界面预览
-
-### 翻译悬浮框（白色主题）
-- 选中单词 → 按下快捷键 → 弹出翻译结果
-- 支持发音、收藏到生词本
-
-### 插件设置页（浅色主题）
-- 配置翻译源、API Key、模型选择
-- 快捷键录入、导出格式设定
+- **Three translation engines**: AI (OpenAI-compatible), Google Translate, Microsoft (Bing) Translate
+- **Any language pair**: Source / target languages independently selectable; source supports Auto-detect. 15 languages: English, Chinese (Simplified / Traditional), Japanese, Korean, French, German, Spanish, Italian, Portuguese, Russian, Arabic, Hindi, Vietnamese, Thai
+- **Target-language monolingual dictionary**: AI mode shows the entry from the target-language perspective — target headword, target-language phonetic, target definition, target-only example, audio for the target word. The original source word stays small with an arrow for context
+- **Human-quality pronunciation**: Real human recordings (DictionaryAPI / Youdao) for English; Microsoft Edge Neural TTS for everything else; Web Speech as final fallback
+- **Keyboard shortcut**: Browser-level shortcut, default `Ctrl+Q` (Chrome Commands API)
+- **Draggable popup**: Move the floating result anywhere on screen
+- **Manual wordbook**: Save translations on demand — your call, not auto-collect
+- **Multi-format export**: TSV / CSV / TXT / Anki-ready, drop straight into Anki and friends
+- **Custom API endpoints**: Works with any OpenAI-compatible service (DeepSeek, Moonshot, local models, etc.)
+- **Built-in PDF reader**: Auto-intercepts PDF pages, renders with PDF.js, supports text selection + translation, zoom, page navigation
+- **PDF outline sidebar**: Auto-extracts the document outline, click any chapter to jump
+- **PDF eye-care mode**: Toggle warm-tone filter to reduce blue light for long sessions
+- **PDF smart zoom**: Instant CSS-transform zoom + delayed re-render at higher resolution — no flicker
 
 ---
 
-## 🚀 安装方法
+## 📸 Preview
 
-### 从源码安装（开发者模式）
+### Translation popup (light theme)
+- Select a word → press the shortcut → result appears
+- Audio playback, save to wordbook
 
-1. 克隆仓库：
+### Settings page (light theme)
+- Configure translation engine, API key, model
+- Capture shortcut, pick export format
+
+---
+
+## 🚀 Installation
+
+### From source (developer mode)
+
+1. Clone the repo:
    ```bash
    git clone https://github.com/hzyu-hub/browser-extension-OpenDict.git
    ```
 
-2. 打开 Chrome，进入 `chrome://extensions/`
+2. Open Chrome and go to `chrome://extensions/`
 
-3. 开启右上角 **开发者模式**
+3. Toggle **Developer mode** (top right)
 
-4. 点击 **加载已解压的扩展程序**，选择项目文件夹
+4. Click **Load unpacked** and pick the project folder
 
-5. 完成！插件图标会出现在浏览器工具栏
+5. Done — the OpenDict icon appears in your toolbar
 
 ---
 
-## ⚙️ 配置说明
+## ⚙️ Configuration
 
-点击工具栏的 OpenDict 图标打开设置页。
+Click the OpenDict icon in the toolbar to open the settings page.
 
-### 翻译源选择
+### Translation engine
 
-| 翻译源 | 是否需要 API Key | 特点 |
+| Engine | API key needed? | Notes |
 |--------|:-:|------|
-| **AI Translation** | ✅ | 单词详解（音标/词性/定义/例句），最全面 |
-| **Google Translation** | ❌ | 零配置，开箱即用 |
-| **Microsoft Translation** | ❌ | 通过 Bing 翻译，免费无需配置 |
+| **AI Translation** | ✅ | Full dictionary entries (phonetic / pos / definition / example), most thorough |
+| **Google Translation** | ❌ | Zero config, works out of the box |
+| **Microsoft Translation** | ❌ | Free via Bing, no setup |
 
-### 语言选择
+### Language selection
 
-设置页提供 **Source Language** 和 **Target Language** 两个下拉框：
+The settings page exposes two dropdowns: **Source Language** and **Target Language**.
 
-- **Source Language**：默认 `Auto-detect`，可手动锁定为某一语言（用于多语混排文本）
-- **Target Language**：默认 `Chinese (Simplified)`，可改为任意支持的语言
+- **Source Language**: defaults to `Auto-detect`; can be locked to a specific language for mixed-script content
+- **Target Language**: defaults to `Chinese (Simplified)`; switch to any of the 15 supported languages
 
-支持的语言：英语、简体中文、繁体中文、日语、韩语、法语、德语、西班牙语、意大利语、葡萄牙语、俄语、阿拉伯语、印地语、越南语、泰语。
+Supported languages: English, Chinese (Simplified), Chinese (Traditional), Japanese, Korean, French, German, Spanish, Italian, Portuguese, Russian, Arabic, Hindi, Vietnamese, Thai.
 
-> 💡 切换语言后立即生效，无需点保存按钮。AI 词典模式会按源语言自动切换音标格式（IPA / 拼音 / 罗马音 等）。
+> 💡 Changes apply instantly — no save button needed. AI dictionary mode picks the appropriate phonetic format per language (IPA / pinyin / romaji / etc.).
 
-### AI 翻译配置
+### AI configuration
 
-- **API Base URL**：默认 `https://api.openai.com/v1`，可替换为任意 OpenAI 兼容端点
-- **API Key**：你的 API 密钥
-- **Model**：默认 `gpt-4o-mini`，可点击刷新按钮从 API 自动拉取模型列表
+- **API Base URL**: defaults to `https://api.openai.com/v1`; replace with any OpenAI-compatible endpoint
+- **API Key**: your secret key
+- **Model**: defaults to `gpt-4o-mini`; click the refresh button to fetch the available model list from your provider
 
-支持的第三方 API 服务（只要兼容 OpenAI 格式）：
+Tested OpenAI-compatible services:
 
-| 服务商 | API Base URL |
+| Provider | API Base URL |
 |--------|-------------|
 | OpenAI | `https://api.openai.com/v1` |
 | OpenRouter | `https://openrouter.ai/api/v1` |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` |
 | DeepSeek | `https://api.deepseek.com/v1` |
 | Moonshot (Kimi) | `https://api.moonshot.cn/v1` |
-| 智谱 (GLM) | `https://open.bigmodel.cn/api/paas/v4` |
-| Ollama（本地） | `http://localhost:11434/v1` |
+| Zhipu (GLM) | `https://open.bigmodel.cn/api/paas/v4` |
+| Ollama (local) | `http://localhost:11434/v1` |
 
-> 💡 通过 OpenRouter 还可以间接使用 Claude、Llama 等不直接兼容 OpenAI 格式的模型。
+> 💡 Through OpenRouter you can also indirectly use Claude, Llama, and other non-OpenAI-compatible models.
 
-### 快捷键设置
+### Shortcut
 
-- 默认快捷键：`Ctrl+Q`（Mac 上为 `Control+Q`）
-- 在设置页点击快捷键输入框，直接按下组合键即可修改
-- 需要至少一个修饰键（Ctrl/Alt/Shift）+ 一个字母或数字
-- 自动屏蔽浏览器保留快捷键（如 Ctrl+T、Cmd+Q）
-
----
-
-## 📖 使用方法
-
-### 基本流程
-
-1. 在任意网页上**选中**一个单词或一段文字
-2. 按下快捷键 `Ctrl+Q`
-3. 悬浮框弹出翻译结果
-
-### 单词翻译（AI 模式）
-
-以**目标语单语词典**形式呈现：
-
-- 🔤 顶部：`源词 → 目标词`（源==目标时仅显示目标词）+ **目标语音标**（IPA / 拼音 / 罗马音 等）
-- 📝 **词性**
-- 📖 **目标语定义**
-- 💬 **目标语例句**（不再双语）
-- 🔊 **发音按钮**：朗读**目标词**（按目标语 TTS）
-- 📌 **Save to wordbook** 按钮（保存"源词 → 目标词"对，方便背单词）
-
-### 句子/段落翻译
-
-直接显示目标语言译文，不显示收藏按钮。
-
-### PDF 文件翻译
-
-浏览器中打开任意 PDF 链接时，插件自动拦截并使用内置 PDF.js 阅读器渲染。PDF 页面中的文字可直接选中，按下快捷键即可翻译，操作体验与普通网页一致。
-
-- 支持 `.pdf` URL 自动拦截和 `Content-Type: application/pdf` 检测
-- 支持缩放（Ctrl+/- 或工具栏按钮）、页码导航、滚动定位
-- 侧边栏目录：自动提取 PDF 大纲，点击跳转对应章节
-- 护眼模式：工具栏 ☀ 按钮切换暖色调，状态自动记忆
-- 智能缩放：先 CSS 缩放保持流畅，再异步重渲染保证清晰度
-- 懒加载渲染：只渲染可见页面，大文件也不卡顿
-- 本地 PDF 文件需在 `chrome://extensions` 中启用「允许访问文件网址」
-
-### 悬浮框操作
-
-- **拖拽**：按住悬浮框顶部区域可拖动位置
-- **关闭**：点击关闭按钮，或 30 秒后自动消失
-- **发音**：点击音频按钮播放单词发音
+- Default: `Ctrl+Q` (`Control+Q` on macOS)
+- Click the shortcut input on the settings page and press your combo to set it
+- Requires at least one modifier (Ctrl / Alt / Shift) + a letter / digit
+- Browser-reserved shortcuts (Ctrl+T, Cmd+Q, etc.) are auto-blocked
 
 ---
 
-## 📚 生词本 & 导出
+## 📖 Usage
 
-### 手动收藏
+### Basic flow
 
-翻译完成后，单词结果底部会显示「**Save to wordbook**」按钮。点击后单词被收藏，按钮变为绿色 ✓ 表示已保存。
+1. **Select** a word or passage on any web page
+2. Press the shortcut `Ctrl+Q`
+3. The popup appears with the translation
 
-> 只有单词/词组翻译结果会显示收藏按钮，句子翻译不会显示。
+### Word lookup (AI mode)
 
-### 导出格式
+The popup is a **monolingual entry in the target language**:
 
-| 格式 | 描述 | 适用场景 |
+- 🔤 Header: `<source> → <target>` (collapsed when source==target) + **target-language phonetic** (IPA / pinyin / romaji / etc.)
+- 📝 **Part of speech**
+- 📖 **Definition** in target language
+- 💬 **Example sentence** in target language only (no longer bilingual)
+- 🔊 **Audio button**: plays the **target word** with target-language TTS
+- 📌 **Save to wordbook**: stores the `source → target` pair for vocab study
+
+### Sentence / paragraph translation
+
+Shows the target-language translation directly — no wordbook button.
+
+### PDF translation
+
+Open any PDF link in the browser and the extension auto-intercepts it, rendering with the built-in PDF.js viewer. Text inside PDFs is selectable and translatable just like a regular web page.
+
+- Auto-intercepts both `.pdf` URLs and `Content-Type: application/pdf` responses
+- Zoom (`Ctrl +/-` or toolbar), page nav, scroll-to-page
+- **Outline sidebar**: auto-extracts the PDF outline, click any chapter to jump
+- **Eye-care mode**: toolbar ☀ button toggles warm tones, state remembered
+- **Smart zoom**: CSS-transform first for instant feedback, then async re-render for crispness
+- **Lazy rendering**: only visible pages render, large files stay smooth
+- For local PDF files, enable "Allow access to file URLs" in `chrome://extensions`
+
+### Popup interaction
+
+- **Drag**: hold the popup header to move it anywhere
+- **Close**: click the X, or wait 30 seconds for auto-close
+- **Audio**: click the speaker icon to hear pronunciation
+
+---
+
+## 📚 Wordbook & Export
+
+### Manual save
+
+After a word translation, a **Save to wordbook** button appears at the bottom. Click to save — the icon turns green ✓ to confirm.
+
+> Only word/phrase results show this button; sentence translations don't.
+
+### Export formats
+
+| Format | Layout | Use case |
 |------|------|---------|
-| **TSV** | `term[TAB]meaning` | 通用格式 |
+| **TSV** | `term[TAB]meaning` | Generic |
 | **CSV** | `term,meaning` | Excel / Google Sheets |
-| **TXT (pipe)** | `term \| meaning` | 纯文本阅读 |
-| **TXT (Anki)** | `term;meaning` | 导入 Anki 制作记忆卡片 |
+| **TXT (pipe)** | `term \| meaning` | Plain text reading |
+| **TXT (Anki)** | `term;meaning` | Direct import into Anki |
 
-### 导出特性
+### Export behavior
 
-- **自动去重**：同一单词只保留最新一次翻译
-- **按字母排序**：导出文件按单词首字母排列
-- **自动命名**：文件名包含日期，如 `opendict-lookup-2026-03-05.tsv`
-- **最多存储 1000 条**记录
+- **Auto-dedup**: same term keeps only the latest translation
+- **Alphabetical sort**: output is sorted by term
+- **Auto filename**: includes today's date, e.g. `opendict-lookup-2026-05-01.tsv`
+- **Cap**: stores up to 1000 most recent entries
 
 ---
 
-## 🔊 发音系统
+## 🔊 Pronunciation system
 
-按目标语自动从多个音源里挑最自然的，由前向后兜底：
+Picks the most natural source per target language, with automatic fallback:
 
-**target=English**：
-1. **DictionaryAPI 词典音频**（真人录音，优先美式）
-2. **有道词典音频**（真人录音，美/英）
-3. **Microsoft Edge Neural TTS**（`en-US-AriaNeural` 神经合成，非常自然）
+**target=English**:
+1. **DictionaryAPI** (real human recordings, US preferred)
+2. **Youdao dictionary audio** (real human, US / UK)
+3. **Microsoft Edge Neural TTS** (`en-US-AriaNeural`, very natural neural synthesis)
 4. **Google Translate TTS**
 5. **Web Speech API**
 
-**target=其他语言**（中、日、韩、法、德、俄、阿、印地、越、泰等）：
-1. **Microsoft Edge Neural TTS**（按目标语切换神经声，如 `zh-CN-XiaoxiaoNeural` / `ja-JP-NanamiNeural` / `fr-FR-DeniseNeural`）
+**target=other languages** (Chinese, Japanese, Korean, French, German, Russian, Arabic, etc.):
+1. **Microsoft Edge Neural TTS** (per-language neural voice: `zh-CN-XiaoxiaoNeural` / `ja-JP-NanamiNeural` / `fr-FR-DeniseNeural` / etc.)
 2. **Google Translate TTS**
 3. **Web Speech API**
 
-> Edge Neural TTS 用的是 Microsoft Edge 浏览器自带 "Read Aloud" 功能的同一接口，零 API Key、零额外配置、零费用。任意环节失败都会自动降级到下一个音源，保证发音按钮永不挂。每个远程音源 5 秒超时；同一词命中缓存第二次秒响。
+> Edge Neural TTS uses the same endpoint that Microsoft Edge browser's "Read Aloud" feature hits — zero API key, zero setup, zero cost. Each remote source has a 5-second timeout and any failure cascades to the next source automatically. Repeated lookups of the same word are served from cache instantly.
 
 ---
 
-## 🏗️ 项目结构
+## 🏗️ Project structure
 
 ```
 browser-extension-OpenDict/
-├── manifest.json      # 扩展配置（Manifest V3）
-├── background.js      # 后台服务：翻译 API、历史存储、导出、PDF 拦截
-├── content.js         # 内容脚本：悬浮框、发音、快捷键
-├── content.css        # 悬浮框样式（白色主题）
-├── popup.html         # 设置页面 HTML + CSS（浅色主题）
-├── popup.js           # 设置页逻辑：配置管理、验证、导出
-├── pdf-viewer.html    # 内置 PDF 阅读器页面
-├── pdf-viewer.js      # PDF 渲染逻辑：懒加载、智能缩放、目录、护眼模式
-├── pdf-viewer.css     # PDF 阅读器样式（暗色工具栏 + 白色页面 + 护眼模式）
+├── manifest.json      # Extension config (Manifest V3)
+├── background.js      # Service worker: translation APIs, history, export, PDF intercept, Edge TTS
+├── content.js         # Content script: popup, audio playback, shortcut
+├── content.css        # Popup styles (light theme)
+├── popup.html         # Settings page HTML + CSS (light theme)
+├── popup.js           # Settings logic: config management, verification, export
+├── pdf-viewer.html    # Built-in PDF reader page
+├── pdf-viewer.js      # PDF rendering: lazy load, smart zoom, outline, eye-care
+├── pdf-viewer.css     # PDF reader styles
 ├── lib/pdfjs/
-│   ├── pdf.min.mjs        # PDF.js 4.x 主库
+│   ├── pdf.min.mjs        # PDF.js 4.x main library
 │   └── pdf.worker.min.mjs # PDF.js Web Worker
 ├── icons/
 │   ├── icon16.png
@@ -229,46 +233,48 @@ browser-extension-OpenDict/
 
 ---
 
-## 🛠️ 技术栈
+## 🛠️ Tech stack
 
 - **Chrome Extension Manifest V3**
-- **Chrome Commands API** — 浏览器级快捷键注册
-- **Chrome Scripting API** — 按需注入内容脚本
-- **Web Speech API** — 语音合成兜底
-- **chrome.storage.sync** — 非敏感配置跨设备同步
-- **chrome.storage.local** — 本地 API Key 与历史存储
-- **chrome.downloads** — 文件导出下载
-- **chrome.webNavigation / webRequest** — PDF 页面自动拦截与重定向
-- **PDF.js 4.x**（Mozilla, Apache 2.0）— 内置 PDF 渲染与可选中文本层
+- **Chrome Commands API** — browser-level shortcut registration
+- **Chrome Scripting API** — on-demand content script injection
+- **WebSocket** — Edge Neural TTS streaming endpoint
+- **Web Speech API** — speech synthesis fallback
+- **chrome.storage.sync** — non-secret config sync across devices
+- **chrome.storage.local** — local API key & history
+- **chrome.downloads** — file export
+- **chrome.webNavigation / webRequest** — PDF page interception & redirect
+- **PDF.js 4.x** (Mozilla, Apache 2.0) — built-in PDF rendering with selectable text layer
 
 ---
 
-## 📝 开发说明
+## 📝 Development
 
-### 本地开发
+### Local development
 
-1. 修改代码后，在 `chrome://extensions/` 页面点击扩展卡片上的 **刷新** 按钮
-2. 刷新当前网页以加载最新的内容脚本
-3. 如果修改了 `manifest.json`，需要重新加载整个扩展
+1. After editing code, click the **Reload** button on the extension card at `chrome://extensions/`
+2. Refresh the test page to load the latest content script
+3. If `manifest.json` changes, the extension fully reloads itself
 
-### 调试
+### Debugging
 
-- **背景脚本**：在 `chrome://extensions/` 点击 "Service Worker" 链接打开 DevTools
-- **内容脚本**：在网页上按 F12，在 Console 中查看 `[OpenDict]` 前缀的日志
-- **设置页**：右键点击插件图标 → 检查弹出窗口
+- **Background**: at `chrome://extensions/`, click the "Service Worker" link to open DevTools
+- **Content script**: press F12 on any page; logs are prefixed with `[OpenDict]`
+- **Settings page**: right-click the extension icon → Inspect popup
 
 ---
 
-## 📄 许可证
+## 📄 License
 
 MIT License
 
 ---
 
-## 🙏 致谢
+## 🙏 Acknowledgements
 
-- [Google Translate](https://translate.google.com/) — 免费翻译服务
-- [Bing Translator](https://www.bing.com/translator) — Microsoft 翻译服务
-- [DictionaryAPI](https://dictionaryapi.dev/) — 提供词典音频查询
-- [有道词典](https://www.youdao.com/) — 提供真人发音音频
-- [PDF.js](https://mozilla.github.io/pdf.js/)（Mozilla）— 内置 PDF 渲染引擎
+- [Google Translate](https://translate.google.com/) — free translation service
+- [Bing Translator](https://www.bing.com/translator) — Microsoft translation service
+- [DictionaryAPI](https://dictionaryapi.dev/) — dictionary audio lookups
+- [Youdao Dictionary](https://www.youdao.com/) — real human pronunciation audio
+- [Microsoft Edge Read Aloud](https://www.microsoft.com/edge) — Neural TTS endpoint
+- [PDF.js](https://mozilla.github.io/pdf.js/) (Mozilla) — built-in PDF rendering engine
