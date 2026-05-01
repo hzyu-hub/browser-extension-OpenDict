@@ -50,6 +50,17 @@
 
 ## 🚀 Installation
 
+### From Release (recommended for end users)
+
+1. Go to the [Releases page](https://github.com/hzyu-hub/browser-extension-OpenDict/releases) and download the latest `opendict-vX.Y.Z.zip`
+2. Unzip the file to a permanent folder (e.g., `~/Applications/opendict/`) — **do not delete this folder after install**, the extension loads from it
+3. Open Chrome and go to `chrome://extensions/`
+4. Toggle **Developer mode** on (top-right corner)
+5. Click **Load unpacked** and select the unzipped folder
+6. Done — OpenDict is now in your toolbar
+
+> Why "Load unpacked"? Chrome blocks self-signed `.crx` files outside of the Chrome Web Store, so a `.zip` + Load unpacked is the standard distribution path for unlisted extensions.
+
 ### From source (developer mode)
 
 1. Clone the repo:

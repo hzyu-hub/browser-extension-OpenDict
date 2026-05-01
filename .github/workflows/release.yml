@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read version from manifest.json
+        id: ver
+        run: |
+          version=$(node -p "require('./manifest.json').version")
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "Manifest version: $version"
+
+      - name: Validate tag matches manifest version
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest_ver="${{ steps.ver.outputs.version }}"
+          if [ "$tag" != "$manifest_ver" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME (=$tag) does not match manifest.json version $manifest_ver"
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches manifest version $manifest_ver"
+
+      - name: Build extension zip
+        run: |
+          zip -r "opendict-v${{ steps.ver.outputs.version }}.zip" \
+            manifest.json \
+            background.js \
+            content.js \
+            content.css \
+            popup.html \
+            popup.js \
+            pdf-viewer.html \
+            pdf-viewer.js \
+            pdf-viewer.css \
+            icons \
+            lib \
+            LICENSE \
+            PRIVACY.md
+          ls -lh "opendict-v${{ steps.ver.outputs.version }}.zip"
+
+      - name: Create GitHub release with zip asset
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: opendict-v*.zip
+          name: OpenDict v${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false

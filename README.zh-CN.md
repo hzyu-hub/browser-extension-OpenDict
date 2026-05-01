@@ -50,6 +50,17 @@
 
 ## 🚀 安装方法
 
+### 从 Release 安装（推荐普通用户）
+
+1. 打开 [Releases 页面](https://github.com/hzyu-hub/browser-extension-OpenDict/releases)，下载最新的 `opendict-vX.Y.Z.zip`
+2. 解压到一个不会删除的目录（如 `~/Applications/opendict/`）—— **解压目录就是扩展安装目录，不能删**
+3. 打开 Chrome，进 `chrome://extensions/`
+4. 右上角打开 **开发者模式**
+5. 点击 **加载已解压的扩展程序**，选刚才的解压目录
+6. 完成，OpenDict 图标出现在工具栏
+
+> 为什么不能"双击 .crx 直接装"？Chrome 自 2018 起禁止安装非 Web Store 的 .crx 自签包，因此 `.zip + 加载已解压` 是非商店扩展的标准发布路径。
+
 ### 从源码安装（开发者模式）
 
 1. 克隆仓库：
