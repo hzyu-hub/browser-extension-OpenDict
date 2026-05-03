@@ -607,14 +607,7 @@ let searchTextExtracted = false;
 let searchMatches = [];
 let searchCurrentIdx = -1;
 
-const allHighlight =
-  typeof Highlight !== "undefined" ? new Highlight() : null;
-const currentHighlight =
-  typeof Highlight !== "undefined" ? new Highlight() : null;
-if (allHighlight && CSS.highlights) {
-  CSS.highlights.set("opendict-search-hit", allHighlight);
-  CSS.highlights.set("opendict-search-hit-current", currentHighlight);
-}
+const SEARCH_MARK_CLASSES = ["opendict-search-hit", "opendict-search-hit-current"];
 
 // Read the actual rendered text of a page's textLayer. This matches DOM
 // offsets exactly (which is what buildRangeForMatch walks), unlike
@@ -660,65 +653,136 @@ async function extractAllPageTexts() {
 }
 
 function clearSearchHighlights() {
-  if (allHighlight) allHighlight.clear?.();
-  if (currentHighlight) currentHighlight.clear?.();
+  for (const [pageNum] of pageSlots) {
+    clearMarksFromPage(pageNum);
+  }
 }
 
-// Build a Range for a given page-relative (start, end) char offset by walking
-// every text node in the textLayer DOM. Using a TreeWalker (instead of
-// indexing into textLayer.children) is critical because PDF.js 4.x can put
-// text in nested elements or even loose text nodes between spans, and the
-// cursor must match `textLayer.textContent` byte-for-byte.
-function buildRangeForMatch(pageNum, start, end) {
+function clearMarksFromPage(pageNum) {
   const slot = pageSlots.get(pageNum);
-  if (!slot) return null;
+  if (!slot) return;
   const textLayer = slot.wrapper.querySelector(".textLayer");
-  if (!textLayer) return null;
+  if (!textLayer) return;
+  const sel = SEARCH_MARK_CLASSES.map((c) => `mark.${c}`).join(",");
+  const marks = textLayer.querySelectorAll(sel);
+  for (const mark of marks) {
+    const parent = mark.parentNode;
+    if (!parent) continue;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+  }
+  textLayer.normalize();
+}
 
+// Wrap matched characters in a <mark> element. Using DOM marks (instead of
+// CSS Custom Highlight API or ::selection) is the only way to get pixel-
+// perfect highlight bounds inside a PDF.js text layer: spans carry a
+// `transform: scaleX(N)` to align text with canvas glyphs, and Range-based
+// rendering does not measure the post-transform geometry precisely. A child
+// <mark> element inherits the same transform, so its background rectangle
+// aligns with the visible glyphs character-for-character.
+function splitAndMark(textNode, localStart, localEnd, className) {
+  const parent = textNode.parentNode;
+  if (!parent) return null;
+  const text = textNode.textContent || "";
+  const before = text.slice(0, localStart);
+  const middle = text.slice(localStart, localEnd);
+  const after = text.slice(localEnd);
+  if (!middle) return null;
+
+  const mark = document.createElement("mark");
+  mark.className = className;
+  mark.textContent = middle;
+
+  if (after) {
+    const afterNode = document.createTextNode(after);
+    parent.insertBefore(afterNode, textNode.nextSibling);
+  }
+  parent.insertBefore(mark, textNode);
+  if (before) textNode.textContent = before;
+  else parent.removeChild(textNode);
+  return mark;
+}
+
+function applyHighlightsToPage(pageNum) {
+  clearMarksFromPage(pageNum);
+  const slot = pageSlots.get(pageNum);
+  if (!slot) return;
+  const textLayer = slot.wrapper.querySelector(".textLayer");
+  if (!textLayer) return;
+
+  // Collect matches that belong to this page.
+  const pageMatches = [];
+  for (let i = 0; i < searchMatches.length; i++) {
+    const m = searchMatches[i];
+    if (m.page === pageNum) {
+      pageMatches.push({
+        start: m.start,
+        end: m.end,
+        isCurrent: i === searchCurrentIdx,
+      });
+    }
+  }
+  if (pageMatches.length === 0) return;
+
+  // First, walk every text node once to collect (textNode, localStart,
+  // localEnd, className) tuples for each match overlap. We must collect
+  // before mutating, otherwise the walker gets confused by inserted nodes.
+  const ops = [];
   const walker = document.createTreeWalker(textLayer, NodeFilter.SHOW_TEXT);
   let cursor = 0;
-  let startNode = null;
-  let startOffset = 0;
-  let endNode = null;
-  let endOffset = 0;
   let node;
   while ((node = walker.nextNode())) {
     const text = node.textContent || "";
     const len = text.length;
     const ns = cursor;
     const ne = cursor + len;
-    if (!startNode && start >= ns && start < ne) {
-      startNode = node;
-      startOffset = start - ns;
-    }
-    if (end > ns && end <= ne) {
-      endNode = node;
-      endOffset = end - ns;
-      break;
-    }
     cursor = ne;
+    if (len === 0) continue;
+    for (const m of pageMatches) {
+      if (m.end <= ns) continue;
+      if (m.start >= ne) continue;
+      const localStart = Math.max(0, m.start - ns);
+      const localEnd = Math.min(len, m.end - ns);
+      if (localStart >= localEnd) continue;
+      ops.push({
+        node,
+        localStart,
+        localEnd,
+        className: m.isCurrent
+          ? "opendict-search-hit-current"
+          : "opendict-search-hit",
+      });
+    }
   }
-  if (!startNode || !endNode) return null;
-  const range = document.createRange();
-  try {
-    range.setStart(startNode, startOffset);
-    range.setEnd(endNode, endOffset);
-  } catch {
-    return null;
+
+  // Group ops by node, then process each node's ops in descending order so
+  // earlier slices don't shift later offsets within the same node.
+  const byNode = new Map();
+  for (const op of ops) {
+    if (!byNode.has(op.node)) byNode.set(op.node, []);
+    byNode.get(op.node).push(op);
   }
-  return range;
+  for (const [n, list] of byNode) {
+    list.sort((a, b) => b.localStart - a.localStart);
+    for (const op of list) {
+      // The text node may have been replaced by an earlier op on the same
+      // node. After splitAndMark, the residual text node holds the BEFORE
+      // slice. Subsequent (smaller localStart) ops on this node act on the
+      // SAME node since they only touch the BEFORE region.
+      splitAndMark(op.node, op.localStart, op.localEnd, op.className);
+    }
+  }
 }
 
 function refreshHighlights() {
-  if (!allHighlight || !currentHighlight) return;
-  allHighlight.clear?.();
-  currentHighlight.clear?.();
-  for (let i = 0; i < searchMatches.length; i++) {
-    const m = searchMatches[i];
-    const range = buildRangeForMatch(m.page, m.start, m.end);
-    if (!range) continue;
-    if (i === searchCurrentIdx) currentHighlight.add(range);
-    else allHighlight.add(range);
+  const pagesWithMatches = new Set(searchMatches.map((m) => m.page));
+  for (const [pageNum] of pageSlots) {
+    if (pagesWithMatches.has(pageNum)) {
+      applyHighlightsToPage(pageNum);
+    } else {
+      clearMarksFromPage(pageNum);
+    }
   }
 }
 

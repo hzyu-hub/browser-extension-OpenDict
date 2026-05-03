@@ -318,11 +318,24 @@ body {
   background: transparent;
 }
 
-/* CSS Custom Highlight API — yellow for all matches, orange for current */
-::highlight(opendict-search-hit) {
+/* Inline DOM highlights — picked over the CSS Custom Highlight API and
+   ::selection because both inherit Range-based geometry, which Chrome
+   measures imprecisely under PDF.js's per-span `transform: scaleX(N)`.
+   A real <mark> child element inherits the parent span's transform, so
+   its background rectangle aligns with the visible glyphs. */
+.textLayer mark.opendict-search-hit,
+.textLayer mark.opendict-search-hit-current {
+  color: inherit;
+  font: inherit;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.textLayer mark.opendict-search-hit {
   background-color: rgba(255, 235, 59, 0.55);
 }
 
-::highlight(opendict-search-hit-current) {
+.textLayer mark.opendict-search-hit-current {
   background-color: rgba(255, 152, 0, 0.75);
 }
