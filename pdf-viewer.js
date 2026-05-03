@@ -616,12 +616,34 @@ if (allHighlight && CSS.highlights) {
   CSS.highlights.set("opendict-search-hit-current", currentHighlight);
 }
 
+// Read the actual rendered text of a page's textLayer. This matches DOM
+// offsets exactly (which is what buildRangeForMatch walks), unlike
+// `getTextContent().items.join("")` whose result can disagree with the
+// DOM by inserted whitespace / merged items.
+function readPageTextFromDom(pageNum) {
+  const slot = pageSlots.get(pageNum);
+  if (!slot) return null;
+  const tl = slot.wrapper.querySelector(".textLayer");
+  if (!tl) return null;
+  return tl.textContent || "";
+}
+
 async function extractAllPageTexts() {
   if (searchTextExtracted || !pdfDoc) return;
   searchTextExtracted = true;
   const fetches = [];
   for (let i = 1; i <= pdfDoc.numPages; i++) {
     if (pageTextCache.has(i)) continue;
+    // Already-rendered pages: read straight from DOM (precise).
+    const dom = readPageTextFromDom(i);
+    if (dom !== null) {
+      pageTextCache.set(i, dom);
+      continue;
+    }
+    // Unrendered pages: fall back to getTextContent join. May not align
+    // perfectly with what the future DOM will show, but lets navigation
+    // count + jump-to-page still work. Once the page actually renders,
+    // onPageTextLayerRendered upgrades the cache to DOM-precise text.
     fetches.push(
       pdfDoc
         .getPage(i)
@@ -642,38 +664,39 @@ function clearSearchHighlights() {
   if (currentHighlight) currentHighlight.clear?.();
 }
 
-// Build a Range for a given page-relative (start, end) offset by walking
-// the textLayer spans. Returns null if the page isn't rendered yet.
+// Build a Range for a given page-relative (start, end) char offset by walking
+// every text node in the textLayer DOM. Using a TreeWalker (instead of
+// indexing into textLayer.children) is critical because PDF.js 4.x can put
+// text in nested elements or even loose text nodes between spans, and the
+// cursor must match `textLayer.textContent` byte-for-byte.
 function buildRangeForMatch(pageNum, start, end) {
   const slot = pageSlots.get(pageNum);
   if (!slot) return null;
   const textLayer = slot.wrapper.querySelector(".textLayer");
   if (!textLayer) return null;
 
-  const spans = textLayer.children; // each span = one textContent item
+  const walker = document.createTreeWalker(textLayer, NodeFilter.SHOW_TEXT);
   let cursor = 0;
   let startNode = null;
   let startOffset = 0;
   let endNode = null;
   let endOffset = 0;
-  for (const span of spans) {
-    // Find the first text node inside this span (PDF.js wraps the str text
-    // in either a direct text child or nested span).
-    const textNode = findFirstTextNode(span);
-    const text = textNode ? textNode.textContent || "" : "";
+  let node;
+  while ((node = walker.nextNode())) {
+    const text = node.textContent || "";
     const len = text.length;
-    const spanStart = cursor;
-    const spanEnd = cursor + len;
-    if (!startNode && start >= spanStart && start < spanEnd) {
-      startNode = textNode;
-      startOffset = start - spanStart;
+    const ns = cursor;
+    const ne = cursor + len;
+    if (!startNode && start >= ns && start < ne) {
+      startNode = node;
+      startOffset = start - ns;
     }
-    if (end > spanStart && end <= spanEnd) {
-      endNode = textNode;
-      endOffset = end - spanStart;
+    if (end > ns && end <= ne) {
+      endNode = node;
+      endOffset = end - ns;
       break;
     }
-    cursor = spanEnd;
+    cursor = ne;
   }
   if (!startNode || !endNode) return null;
   const range = document.createRange();
@@ -701,6 +724,22 @@ function refreshHighlights() {
 
 // Hook called by renderPageContent after a textLayer is freshly rendered.
 function onPageTextLayerRendered(pageNum) {
+  // If we have a search session, upgrade this page's cached text to the
+  // DOM-precise version. PDF.js may have inserted spaces / merged items
+  // when building the layer, so the DOM string can differ from the
+  // getTextContent join we used as fallback.
+  if (searchTextExtracted) {
+    const domText = readPageTextFromDom(pageNum);
+    if (domText !== null && pageTextCache.get(pageNum) !== domText) {
+      pageTextCache.set(pageNum, domText);
+      // Pageʼs text changed → rerun search so match offsets line up with
+      // the now-authoritative DOM text. runSearch handles refreshHighlights.
+      if (!searchBar.hidden && searchInput.value.trim()) {
+        runSearch(searchInput.value.trim());
+        return;
+      }
+    }
+  }
   if (searchMatches.length === 0) return;
   if (!searchMatches.some((m) => m.page === pageNum)) return;
   refreshHighlights();
