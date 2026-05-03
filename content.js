@@ -55,6 +55,25 @@
     "vi": "vi",
     "th": "th",
   };
+  // Compact codes shown as a "target language" badge when source/target words
+  // collide in spelling (cognates like English/French "configuration").
+  const LANG_DISPLAY_CODE = {
+    "en":    "EN",
+    "zh-CN": "ZH",
+    "zh-TW": "ZH-TW",
+    "ja":    "JA",
+    "ko":    "KO",
+    "fr":    "FR",
+    "de":    "DE",
+    "es":    "ES",
+    "it":    "IT",
+    "pt":    "PT",
+    "ru":    "RU",
+    "ar":    "AR",
+    "hi":    "HI",
+    "vi":    "VI",
+    "th":    "TH",
+  };
   const SCRIPT_HINTS = [
     ["zh-CN", /[一-鿿]/],
     ["ja", /[぀-ヿ]/],
@@ -669,9 +688,21 @@
       const sourcePart = sameWord
         ? ""
         : `<span class="opendict-source-word">${escapeHtml(sourceWord)}</span><span class="opendict-arrow">→</span>`;
+      // When source word and target word collide in spelling (cognates such as
+      // English/French "configuration"), the user can't tell at a glance which
+      // language entry is being shown. Append a small target-language tag in
+      // that case — but skip it when source==target language is explicit
+      // (genuine monolingual lookup, no ambiguity).
+      const sourceLangCfg = userConfig.sourceLanguage || "auto";
+      const showLangTag =
+        sameWord && sourceLangCfg !== targetLang;
+      const langTagPart = showLangTag
+        ? `<span class="opendict-target-lang-tag">${escapeHtml(LANG_DISPLAY_CODE[targetLang] || targetLang.toUpperCase())}</span>`
+        : "";
       headerWordRow.innerHTML = `
         ${sourcePart}
         <span class="opendict-word">${escapeHtml(targetWord)}</span>
+        ${langTagPart}
       `;
     }
 
