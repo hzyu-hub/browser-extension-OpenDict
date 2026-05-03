@@ -33,6 +33,8 @@
 - **PDF 侧边栏目录**：自动提取 PDF 大纲，点击章节标题快速跳转
 - **PDF 护眼模式**：一键切换暖色调滤镜，降低蓝光，长时间阅读更舒适
 - **PDF 智能缩放**：CSS transform 即时缩放 + 延迟高清重渲染，零闪烁流畅体验
+- **PDF 全文搜索**：`Ctrl+F` 打开搜索栏，所有命中通过 CSS Custom Highlight API 高亮；`Enter` / `Shift+Enter` 循环跳转
+- **PDF 精准选词**：双击精准选中一个单词，即便底层 PDF 文字被拆到多个 glyph span 也能正确扩展
 
 ---
 

@@ -253,3 +253,76 @@ body {
   font-size: 15px;
   line-height: 1.6;
 }
+
+/* --- Search bar --- */
+
+#search-bar {
+  flex-shrink: 0;
+  height: 38px;
+  background: #2a2d2f;
+  border-top: 1px solid #1f2123;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+#search-bar[hidden] {
+  display: none;
+}
+
+#search-input {
+  flex: 1;
+  max-width: 320px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #4a4d50;
+  border-radius: 4px;
+  background: #1f2123;
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+#search-input:focus {
+  border-color: #0284c7;
+}
+
+#search-count {
+  color: #94a3b8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 50px;
+}
+
+#search-bar button {
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+#search-bar button:hover {
+  background: #3a3d40;
+  color: #fff;
+}
+
+#search-bar button:disabled {
+  color: #6b7280;
+  cursor: default;
+  background: transparent;
+}
+
+/* CSS Custom Highlight API — yellow for all matches, orange for current */
+::highlight(opendict-search-hit) {
+  background-color: rgba(255, 235, 59, 0.55);
+}
+
+::highlight(opendict-search-hit-current) {
+  background-color: rgba(255, 152, 0, 0.75);
+}

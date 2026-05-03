@@ -33,6 +33,8 @@
 - **PDF outline sidebar**: Auto-extracts the document outline, click any chapter to jump
 - **PDF eye-care mode**: Toggle warm-tone filter to reduce blue light for long sessions
 - **PDF smart zoom**: Instant CSS-transform zoom + delayed re-render at higher resolution — no flicker
+- **PDF in-document search**: `Ctrl+F` opens a search bar that highlights all matches via the CSS Custom Highlight API; `Enter` / `Shift+Enter` cycle through results
+- **PDF accurate word selection**: double-click selects exactly one word, even when the underlying PDF text is split across multiple glyph spans
 
 ---
 

@@ -27,7 +27,15 @@
       <button id="zoom-reset" title="Reset zoom">Reset</button>
       <span class="separator"></span>
       <button id="toggle-eye-care" title="Eye care mode">&#9788;</button>
+      <button id="toggle-search" title="Find (Ctrl+F)">&#128269;</button>
     </div>
+  </div>
+  <div id="search-bar" hidden>
+    <input id="search-input" type="text" placeholder="Find in document" autocomplete="off" spellcheck="false" />
+    <span id="search-count">0/0</span>
+    <button id="search-prev" title="Previous match (Shift+Enter)">&#9650;</button>
+    <button id="search-next" title="Next match (Enter)">&#9660;</button>
+    <button id="search-close" title="Close (Esc)">&#10005;</button>
   </div>
   <div id="main-content">
     <div id="sidebar">

@@ -160,6 +160,9 @@ async function renderPageContent(pageNum, scale) {
       viewport,
     });
     await tl.render();
+    // Notify search subsystem that this page's textLayer is fresh, so any
+    // existing highlights can be re-attached to the new DOM nodes.
+    onPageTextLayerRendered?.(pageNum);
   } catch {
     // Text layer failed; canvas still works
   }
@@ -439,6 +442,387 @@ container.addEventListener("scroll", () => {
       pageNumInput.dataset.current = num;
       break;
     }
+  }
+});
+
+// --- Custom double-click word selection ---
+// Browser-default dblclick on PDF.js text spans is unreliable: spans
+// frequently contain multiple words (e.g. "Section 4, with lowercase") and
+// the word-boundary detection can pick up trailing punctuation/whitespace
+// or stop at a span boundary mid-word. We override it with a deterministic
+// caret-based selection that walks across sibling spans when needed.
+const WORD_CHAR = /[\p{L}\p{N}_'’\-]/u;
+
+function expandWordWithinNode(text, offset) {
+  let start = offset;
+  let end = offset;
+  // If the click landed on a non-word char, try the previous char.
+  if (start > 0 && !WORD_CHAR.test(text[start] || "")) {
+    if (WORD_CHAR.test(text[start - 1])) start -= 1;
+    else return null;
+  }
+  while (start > 0 && WORD_CHAR.test(text[start - 1])) start -= 1;
+  end = start;
+  while (end < text.length && WORD_CHAR.test(text[end])) end += 1;
+  if (start === end) return null;
+  return { start, end };
+}
+
+function findFirstTextNode(el) {
+  for (const child of el.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) return child;
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const inner = findFirstTextNode(child);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
+function findLastTextNode(el) {
+  for (let i = el.childNodes.length - 1; i >= 0; i--) {
+    const child = el.childNodes[i];
+    if (child.nodeType === Node.TEXT_NODE) return child;
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const inner = findLastTextNode(child);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
+function selectWordAtPoint(clientX, clientY) {
+  const range = document.caretRangeFromPoint
+    ? document.caretRangeFromPoint(clientX, clientY)
+    : null;
+  if (!range) return false;
+
+  let node = range.startContainer;
+  let offset = range.startOffset;
+
+  // If the caret landed on an element, descend to the first text node.
+  if (node.nodeType !== Node.TEXT_NODE) {
+    const inner = findFirstTextNode(node);
+    if (!inner) return false;
+    node = inner;
+    offset = 0;
+  }
+
+  const text = node.textContent || "";
+  const within = expandWordWithinNode(text, Math.min(offset, text.length));
+  if (!within) return false;
+
+  let startNode = node;
+  let startOffset = within.start;
+  let endNode = node;
+  let endOffset = within.end;
+
+  // Word may extend past the current text node when PDF.js splits a glyph
+  // run mid-word. Walk siblings on both sides while the boundary char of the
+  // adjacent node is still a word char, and the spans visually touch.
+  if (startOffset === 0) {
+    let cursor = node.parentNode;
+    while (cursor) {
+      let prev = cursor.previousSibling;
+      while (prev && prev.nodeType !== Node.ELEMENT_NODE && prev.nodeType !== Node.TEXT_NODE) {
+        prev = prev.previousSibling;
+      }
+      if (!prev) break;
+      const lastText = prev.nodeType === Node.TEXT_NODE ? prev : findLastTextNode(prev);
+      if (!lastText) break;
+      const t = lastText.textContent || "";
+      if (!t.length || !WORD_CHAR.test(t[t.length - 1])) break;
+      let i = t.length;
+      while (i > 0 && WORD_CHAR.test(t[i - 1])) i -= 1;
+      startNode = lastText;
+      startOffset = i;
+      if (i > 0) break; // word definitely starts in this node
+      cursor = prev;
+    }
+  }
+
+  if (endOffset === text.length) {
+    let cursor = node.parentNode;
+    while (cursor) {
+      let next = cursor.nextSibling;
+      while (next && next.nodeType !== Node.ELEMENT_NODE && next.nodeType !== Node.TEXT_NODE) {
+        next = next.nextSibling;
+      }
+      if (!next) break;
+      const firstText = next.nodeType === Node.TEXT_NODE ? next : findFirstTextNode(next);
+      if (!firstText) break;
+      const t = firstText.textContent || "";
+      if (!t.length || !WORD_CHAR.test(t[0])) break;
+      let i = 0;
+      while (i < t.length && WORD_CHAR.test(t[i])) i += 1;
+      endNode = firstText;
+      endOffset = i;
+      if (i < t.length) break;
+      cursor = next;
+    }
+  }
+
+  const sel = window.getSelection();
+  if (!sel) return false;
+  const finalRange = document.createRange();
+  try {
+    finalRange.setStart(startNode, startOffset);
+    finalRange.setEnd(endNode, endOffset);
+  } catch {
+    return false;
+  }
+  sel.removeAllRanges();
+  sel.addRange(finalRange);
+  return true;
+}
+
+container.addEventListener("dblclick", (e) => {
+  if (!e.target.closest(".textLayer")) return;
+  if (selectWordAtPoint(e.clientX, e.clientY)) {
+    // Prevent the browser's default word selection from clobbering ours.
+    e.preventDefault();
+  }
+}, true);
+
+// --- In-document search (Ctrl+F) ---
+//
+// Custom search since the bundled lib only ships PDF.js core (no
+// PDFFindController). We extract per-page text via getTextContent (cached),
+// run substring search across pages, and use the CSS Custom Highlight API
+// (CSS.highlights) to paint matches without mutating the textLayer DOM.
+
+const searchBar = document.getElementById("search-bar");
+const searchInput = document.getElementById("search-input");
+const searchCount = document.getElementById("search-count");
+const searchPrevBtn = document.getElementById("search-prev");
+const searchNextBtn = document.getElementById("search-next");
+const searchCloseBtn = document.getElementById("search-close");
+const toggleSearchBtn = document.getElementById("toggle-search");
+
+// pageNum → string of plain text (concatenated from getTextContent items)
+const pageTextCache = new Map();
+let searchTextExtracted = false;
+
+// Each match: { page, start, end } — char offsets within pageTextCache.get(page)
+let searchMatches = [];
+let searchCurrentIdx = -1;
+
+const allHighlight =
+  typeof Highlight !== "undefined" ? new Highlight() : null;
+const currentHighlight =
+  typeof Highlight !== "undefined" ? new Highlight() : null;
+if (allHighlight && CSS.highlights) {
+  CSS.highlights.set("opendict-search-hit", allHighlight);
+  CSS.highlights.set("opendict-search-hit-current", currentHighlight);
+}
+
+async function extractAllPageTexts() {
+  if (searchTextExtracted || !pdfDoc) return;
+  searchTextExtracted = true;
+  const fetches = [];
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    if (pageTextCache.has(i)) continue;
+    fetches.push(
+      pdfDoc
+        .getPage(i)
+        .then((page) => page.getTextContent())
+        .then((tc) => {
+          pageTextCache.set(i, tc.items.map((it) => it.str || "").join(""));
+        })
+        .catch(() => {
+          pageTextCache.set(i, "");
+        }),
+    );
+  }
+  await Promise.all(fetches);
+}
+
+function clearSearchHighlights() {
+  if (allHighlight) allHighlight.clear?.();
+  if (currentHighlight) currentHighlight.clear?.();
+}
+
+// Build a Range for a given page-relative (start, end) offset by walking
+// the textLayer spans. Returns null if the page isn't rendered yet.
+function buildRangeForMatch(pageNum, start, end) {
+  const slot = pageSlots.get(pageNum);
+  if (!slot) return null;
+  const textLayer = slot.wrapper.querySelector(".textLayer");
+  if (!textLayer) return null;
+
+  const spans = textLayer.children; // each span = one textContent item
+  let cursor = 0;
+  let startNode = null;
+  let startOffset = 0;
+  let endNode = null;
+  let endOffset = 0;
+  for (const span of spans) {
+    // Find the first text node inside this span (PDF.js wraps the str text
+    // in either a direct text child or nested span).
+    const textNode = findFirstTextNode(span);
+    const text = textNode ? textNode.textContent || "" : "";
+    const len = text.length;
+    const spanStart = cursor;
+    const spanEnd = cursor + len;
+    if (!startNode && start >= spanStart && start < spanEnd) {
+      startNode = textNode;
+      startOffset = start - spanStart;
+    }
+    if (end > spanStart && end <= spanEnd) {
+      endNode = textNode;
+      endOffset = end - spanStart;
+      break;
+    }
+    cursor = spanEnd;
+  }
+  if (!startNode || !endNode) return null;
+  const range = document.createRange();
+  try {
+    range.setStart(startNode, startOffset);
+    range.setEnd(endNode, endOffset);
+  } catch {
+    return null;
+  }
+  return range;
+}
+
+function refreshHighlights() {
+  if (!allHighlight || !currentHighlight) return;
+  allHighlight.clear?.();
+  currentHighlight.clear?.();
+  for (let i = 0; i < searchMatches.length; i++) {
+    const m = searchMatches[i];
+    const range = buildRangeForMatch(m.page, m.start, m.end);
+    if (!range) continue;
+    if (i === searchCurrentIdx) currentHighlight.add(range);
+    else allHighlight.add(range);
+  }
+}
+
+// Hook called by renderPageContent after a textLayer is freshly rendered.
+function onPageTextLayerRendered(pageNum) {
+  if (searchMatches.length === 0) return;
+  if (!searchMatches.some((m) => m.page === pageNum)) return;
+  refreshHighlights();
+}
+
+function runSearch(query) {
+  searchMatches = [];
+  searchCurrentIdx = -1;
+  if (!query) {
+    updateSearchCount();
+    clearSearchHighlights();
+    return;
+  }
+  const needle = query.toLowerCase();
+  for (const [page, text] of pageTextCache) {
+    const haystack = text.toLowerCase();
+    let from = 0;
+    while (from <= haystack.length - needle.length) {
+      const idx = haystack.indexOf(needle, from);
+      if (idx < 0) break;
+      searchMatches.push({ page, start: idx, end: idx + needle.length });
+      from = idx + needle.length;
+    }
+  }
+  // Sort by page, then by start offset.
+  searchMatches.sort((a, b) => a.page - b.page || a.start - b.start);
+  if (searchMatches.length > 0) {
+    searchCurrentIdx = 0;
+    jumpToMatch(0);
+  } else {
+    updateSearchCount();
+    clearSearchHighlights();
+  }
+}
+
+function jumpToMatch(idx) {
+  if (idx < 0 || idx >= searchMatches.length) return;
+  searchCurrentIdx = idx;
+  const m = searchMatches[idx];
+  scrollToPage(m.page);
+  updateSearchCount();
+  // Wait one frame so the page slot is at least scheduled to render, then
+  // refresh highlights. Pages that aren't yet rendered will be picked up
+  // again via onPageTextLayerRendered.
+  requestAnimationFrame(() => requestAnimationFrame(refreshHighlights));
+}
+
+function updateSearchCount() {
+  const total = searchMatches.length;
+  if (total === 0) {
+    searchCount.textContent = searchInput.value.trim() ? "0/0" : "";
+  } else {
+    searchCount.textContent = `${searchCurrentIdx + 1}/${total}`;
+  }
+  searchPrevBtn.disabled = total === 0;
+  searchNextBtn.disabled = total === 0;
+}
+
+let searchDebounce = null;
+function scheduleSearch() {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    runSearch(searchInput.value.trim());
+  }, 180);
+}
+
+async function openSearch() {
+  searchBar.hidden = false;
+  searchInput.focus();
+  searchInput.select();
+  if (!searchTextExtracted) {
+    searchCount.textContent = "Indexing…";
+    await extractAllPageTexts();
+    searchCount.textContent = "";
+  }
+  if (searchInput.value.trim()) {
+    runSearch(searchInput.value.trim());
+  }
+}
+
+function closeSearch() {
+  searchBar.hidden = true;
+  searchMatches = [];
+  searchCurrentIdx = -1;
+  clearSearchHighlights();
+  updateSearchCount();
+}
+
+searchInput.addEventListener("input", scheduleSearch);
+searchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    if (searchMatches.length === 0) return;
+    const next = e.shiftKey
+      ? (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length
+      : (searchCurrentIdx + 1) % searchMatches.length;
+    jumpToMatch(next);
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    closeSearch();
+  }
+});
+searchPrevBtn.addEventListener("click", () => {
+  if (searchMatches.length === 0) return;
+  const next =
+    (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
+  jumpToMatch(next);
+});
+searchNextBtn.addEventListener("click", () => {
+  if (searchMatches.length === 0) return;
+  jumpToMatch((searchCurrentIdx + 1) % searchMatches.length);
+});
+searchCloseBtn.addEventListener("click", closeSearch);
+toggleSearchBtn.addEventListener("click", () => {
+  if (searchBar.hidden) openSearch();
+  else closeSearch();
+});
+
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    openSearch();
   }
 });
 
