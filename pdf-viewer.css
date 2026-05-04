@@ -318,24 +318,30 @@ body {
   background: transparent;
 }
 
-/* Inline DOM highlights — picked over the CSS Custom Highlight API and
-   ::selection because both inherit Range-based geometry, which Chrome
-   measures imprecisely under PDF.js's per-span `transform: scaleX(N)`.
-   A real <mark> child element inherits the parent span's transform, so
-   its background rectangle aligns with the visible glyphs. */
-.textLayer mark.opendict-search-hit,
-.textLayer mark.opendict-search-hit-current {
-  color: inherit;
-  font: inherit;
-  border-radius: 0;
-  padding: 0;
-  margin: 0;
+/* --- Search highlight overlays ---
+   Positioned inside .pdf-page-wrapper (between canvas z:auto and textLayer z:2)
+   using Range.getClientRects() for pixel-perfect alignment with canvas text.
+   Never inserted into the textLayer DOM so text layout is untouched. */
+
+.od-search-highlights {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-.textLayer mark.opendict-search-hit {
+.od-search-highlights > .opendict-search-hit,
+.od-search-highlights > .opendict-search-hit-current {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.od-search-highlights > .opendict-search-hit {
   background-color: rgba(255, 235, 59, 0.55);
 }
 
-.textLayer mark.opendict-search-hit-current {
+.od-search-highlights > .opendict-search-hit-current {
   background-color: rgba(255, 152, 0, 0.75);
 }

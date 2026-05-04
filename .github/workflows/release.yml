@@ -45,6 +45,7 @@ jobs:
             popup.js \
             pdf-viewer.html \
             pdf-viewer.js \
+            pdf-text-index-core.mjs \
             pdf-viewer.css \
             icons \
             lib \

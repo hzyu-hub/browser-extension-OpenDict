@@ -1,5 +1,14 @@
 // OpenDict PDF Viewer — renders PDFs with selectable text for translation
 import * as pdfjsLib from "./lib/pdfjs/pdf.min.mjs";
+import {
+  buildDomRangesFromCanonicalRange,
+  buildTextIndexFromTextLayer,
+  findCharIndexAtPoint,
+  findMatchesInIndex,
+  findTokenContaining,
+  normalizeCoarseText,
+  normalizeSearchQuery,
+} from "./pdf-text-index-core.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "./lib/pdfjs/pdf.worker.min.mjs";
 
@@ -29,6 +38,9 @@ let renderedScale = 1.5;
 
 // Debounce timer for high-quality re-render after zoom settles
 let rerenderTimer = null;
+
+// pageNum → canonical text index built from the rendered PDF.js textLayer.
+const pageTextIndexCache = new Map();
 
 // Show filename in toolbar and page title
 if (pdfUrl) {
@@ -446,150 +458,88 @@ container.addEventListener("scroll", () => {
 });
 
 // --- Custom double-click word selection ---
-// Browser-default dblclick on PDF.js text spans is unreliable: spans
-// frequently contain multiple words (e.g. "Section 4, with lowercase") and
-// the word-boundary detection can pick up trailing punctuation/whitespace
-// or stop at a span boundary mid-word. We override it with a deterministic
-// caret-based selection that walks across sibling spans when needed.
-const WORD_CHAR = /[\p{L}\p{N}_'’\-]/u;
+// Browser-default dblclick on PDF.js text spans is unreliable because the
+// transparent textLayer is absolutely positioned and often split across many
+// glyph spans. Use the same canonical text index as search: point → char →
+// token → DOM Range.
 
-function expandWordWithinNode(text, offset) {
-  let start = offset;
-  let end = offset;
-  // If the click landed on a non-word char, try the previous char.
-  if (start > 0 && !WORD_CHAR.test(text[start] || "")) {
-    if (WORD_CHAR.test(text[start - 1])) start -= 1;
-    else return null;
+function findPageNumAtPoint(clientX, clientY, target = null) {
+  const wrapper = target?.closest?.(".pdf-page-wrapper");
+  if (wrapper?.dataset?.page) return Number(wrapper.dataset.page);
+
+  let bestPage = null;
+  let bestDist = Infinity;
+  for (const [pageNum, slot] of pageSlots) {
+    const r = slot.wrapper.getBoundingClientRect();
+    if (
+      clientX >= r.left &&
+      clientX <= r.right &&
+      clientY >= r.top &&
+      clientY <= r.bottom
+    ) {
+      return pageNum;
+    }
+    const dx = clientX < r.left ? r.left - clientX : clientX > r.right ? clientX - r.right : 0;
+    const dy = clientY < r.top ? r.top - clientY : clientY > r.bottom ? clientY - r.bottom : 0;
+    const dist = Math.hypot(dx, dy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestPage = pageNum;
+    }
   }
-  while (start > 0 && WORD_CHAR.test(text[start - 1])) start -= 1;
-  end = start;
-  while (end < text.length && WORD_CHAR.test(text[end])) end += 1;
-  if (start === end) return null;
-  return { start, end };
+  return bestDist <= 24 ? bestPage : null;
 }
 
-function findFirstTextNode(el) {
-  for (const child of el.childNodes) {
-    if (child.nodeType === Node.TEXT_NODE) return child;
-    if (child.nodeType === Node.ELEMENT_NODE) {
-      const inner = findFirstTextNode(child);
-      if (inner) return inner;
-    }
-  }
-  return null;
-}
-
-function findLastTextNode(el) {
-  for (let i = el.childNodes.length - 1; i >= 0; i--) {
-    const child = el.childNodes[i];
-    if (child.nodeType === Node.TEXT_NODE) return child;
-    if (child.nodeType === Node.ELEMENT_NODE) {
-      const inner = findLastTextNode(child);
-      if (inner) return inner;
-    }
-  }
-  return null;
-}
-
-function selectWordAtPoint(clientX, clientY) {
-  const range = document.caretRangeFromPoint
-    ? document.caretRangeFromPoint(clientX, clientY)
-    : null;
-  if (!range) return false;
-
-  let node = range.startContainer;
-  let offset = range.startOffset;
-
-  // If the caret landed on an element, descend to the first text node.
-  if (node.nodeType !== Node.TEXT_NODE) {
-    const inner = findFirstTextNode(node);
-    if (!inner) return false;
-    node = inner;
-    offset = 0;
-  }
-
-  const text = node.textContent || "";
-  const within = expandWordWithinNode(text, Math.min(offset, text.length));
-  if (!within) return false;
-
-  let startNode = node;
-  let startOffset = within.start;
-  let endNode = node;
-  let endOffset = within.end;
-
-  // Word may extend past the current text node when PDF.js splits a glyph
-  // run mid-word. Walk siblings on both sides while the boundary char of the
-  // adjacent node is still a word char, and the spans visually touch.
-  if (startOffset === 0) {
-    let cursor = node.parentNode;
-    while (cursor) {
-      let prev = cursor.previousSibling;
-      while (prev && prev.nodeType !== Node.ELEMENT_NODE && prev.nodeType !== Node.TEXT_NODE) {
-        prev = prev.previousSibling;
-      }
-      if (!prev) break;
-      const lastText = prev.nodeType === Node.TEXT_NODE ? prev : findLastTextNode(prev);
-      if (!lastText) break;
-      const t = lastText.textContent || "";
-      if (!t.length || !WORD_CHAR.test(t[t.length - 1])) break;
-      let i = t.length;
-      while (i > 0 && WORD_CHAR.test(t[i - 1])) i -= 1;
-      startNode = lastText;
-      startOffset = i;
-      if (i > 0) break; // word definitely starts in this node
-      cursor = prev;
-    }
-  }
-
-  if (endOffset === text.length) {
-    let cursor = node.parentNode;
-    while (cursor) {
-      let next = cursor.nextSibling;
-      while (next && next.nodeType !== Node.ELEMENT_NODE && next.nodeType !== Node.TEXT_NODE) {
-        next = next.nextSibling;
-      }
-      if (!next) break;
-      const firstText = next.nodeType === Node.TEXT_NODE ? next : findFirstTextNode(next);
-      if (!firstText) break;
-      const t = firstText.textContent || "";
-      if (!t.length || !WORD_CHAR.test(t[0])) break;
-      let i = 0;
-      while (i < t.length && WORD_CHAR.test(t[i])) i += 1;
-      endNode = firstText;
-      endOffset = i;
-      if (i < t.length) break;
-      cursor = next;
-    }
-  }
-
+function selectDomRanges(ranges) {
+  if (!ranges || ranges.length === 0) return false;
+  const first = ranges[0];
+  const last = ranges[ranges.length - 1];
   const sel = window.getSelection();
   if (!sel) return false;
-  const finalRange = document.createRange();
+
+  const range = document.createRange();
   try {
-    finalRange.setStart(startNode, startOffset);
-    finalRange.setEnd(endNode, endOffset);
+    range.setStart(first.node, first.startOffset);
+    range.setEnd(last.node, last.endOffset);
   } catch {
     return false;
   }
+
   sel.removeAllRanges();
-  sel.addRange(finalRange);
+  sel.addRange(range);
   return true;
+}
+
+function selectWordAtPoint(clientX, clientY, target = null) {
+  const pageNum = findPageNumAtPoint(clientX, clientY, target);
+  if (!pageNum) return false;
+
+  const index = getPageTextIndex(pageNum);
+  if (!index) return false;
+
+  const charIndex = findCharIndexAtPoint(index, clientX, clientY);
+  if (charIndex < 0) return false;
+
+  const token = findTokenContaining(index, charIndex);
+  if (!token) return false;
+
+  const ranges = buildDomRangesFromCanonicalRange(index, token.start, token.end);
+  return selectDomRanges(ranges);
 }
 
 container.addEventListener("dblclick", (e) => {
   if (!e.target.closest(".textLayer")) return;
-  if (selectWordAtPoint(e.clientX, e.clientY)) {
+  if (selectWordAtPoint(e.clientX, e.clientY, e.target)) {
     // Prevent the browser's default word selection from clobbering ours.
     e.preventDefault();
   }
 }, true);
 
 // --- In-document search (Ctrl+F) ---
-//
-// Custom search since the bundled lib only ships PDF.js core (no
-// PDFFindController). We extract per-page text via getTextContent (cached),
-// run substring search across pages, and use the CSS Custom Highlight API
-// (CSS.highlights) to paint matches without mutating the textLayer DOM.
+// Search and double-click selection share one canonical per-page text model.
+// Rendered pages get exact DOM mappings for pixel-accurate marks; unrendered
+// pages keep a coarse text cache for counts and navigation until their textLayer
+// is lazily rendered.
 
 const searchBar = document.getElementById("search-bar");
 const searchInput = document.getElementById("search-input");
@@ -599,26 +549,42 @@ const searchNextBtn = document.getElementById("search-next");
 const searchCloseBtn = document.getElementById("search-close");
 const toggleSearchBtn = document.getElementById("toggle-search");
 
-// pageNum → string of plain text (concatenated from getTextContent items)
+// pageNum → normalized coarse text. Rendered pages are upgraded to canonical
+// text from PageTextIndex; unrendered pages use getTextContent() as a fallback.
 const pageTextCache = new Map();
 let searchTextExtracted = false;
 
-// Each match: { page, start, end } — char offsets within pageTextCache.get(page)
+// Each match: { page, start, end } — offsets in that page's canonical/coarse text.
 let searchMatches = [];
 let searchCurrentIdx = -1;
 
-const SEARCH_MARK_CLASSES = ["opendict-search-hit", "opendict-search-hit-current"];
-
-// Read the actual rendered text of a page's textLayer. This matches DOM
-// offsets exactly (which is what buildRangeForMatch walks), unlike
-// `getTextContent().items.join("")` whose result can disagree with the
-// DOM by inserted whitespace / merged items.
-function readPageTextFromDom(pageNum) {
+function getTextLayerForPage(pageNum) {
   const slot = pageSlots.get(pageNum);
-  if (!slot) return null;
-  const tl = slot.wrapper.querySelector(".textLayer");
-  if (!tl) return null;
-  return tl.textContent || "";
+  return slot?.wrapper?.querySelector(".textLayer") || null;
+}
+
+function clearPageTextIndex(pageNum) {
+  pageTextIndexCache.delete(pageNum);
+}
+
+function getPageTextIndex(pageNum) {
+  if (pageTextIndexCache.has(pageNum)) return pageTextIndexCache.get(pageNum);
+  const textLayer = getTextLayerForPage(pageNum);
+  if (!textLayer) return null;
+  const index = buildTextIndexFromTextLayer(textLayer);
+  index.page = pageNum;
+  pageTextIndexCache.set(pageNum, index);
+  return index;
+}
+
+async function getCoarsePageText(pageNum) {
+  try {
+    const page = await pdfDoc.getPage(pageNum);
+    const tc = await page.getTextContent();
+    return normalizeCoarseText(tc.items);
+  } catch {
+    return { joined: "", spaced: "" };
+  }
 }
 
 async function extractAllPageTexts() {
@@ -627,150 +593,98 @@ async function extractAllPageTexts() {
   const fetches = [];
   for (let i = 1; i <= pdfDoc.numPages; i++) {
     if (pageTextCache.has(i)) continue;
-    // Already-rendered pages: read straight from DOM (precise).
-    const dom = readPageTextFromDom(i);
-    if (dom !== null) {
-      pageTextCache.set(i, dom);
+    const index = getPageTextIndex(i);
+    if (index) {
+      pageTextCache.set(i, index.canonicalText);
       continue;
     }
-    // Unrendered pages: fall back to getTextContent join. May not align
-    // perfectly with what the future DOM will show, but lets navigation
-    // count + jump-to-page still work. Once the page actually renders,
-    // onPageTextLayerRendered upgrades the cache to DOM-precise text.
+    // Use .catch() so one page failure doesn't kill the entire extraction.
     fetches.push(
-      pdfDoc
-        .getPage(i)
-        .then((page) => page.getTextContent())
-        .then((tc) => {
-          pageTextCache.set(i, tc.items.map((it) => it.str || "").join(""));
-        })
-        .catch(() => {
-          pageTextCache.set(i, "");
-        }),
+      getCoarsePageText(i)
+        .then((text) => pageTextCache.set(i, text))
+        .catch(() => {})
     );
   }
-  await Promise.all(fetches);
+  await Promise.allSettled(fetches);
 }
 
 function clearSearchHighlights() {
   for (const [pageNum] of pageSlots) {
-    clearMarksFromPage(pageNum);
+    clearHighlightsFromPage(pageNum);
   }
 }
 
-function clearMarksFromPage(pageNum) {
+function clearHighlightsFromPage(pageNum) {
   const slot = pageSlots.get(pageNum);
   if (!slot) return;
-  const textLayer = slot.wrapper.querySelector(".textLayer");
-  if (!textLayer) return;
-  const sel = SEARCH_MARK_CLASSES.map((c) => `mark.${c}`).join(",");
-  const marks = textLayer.querySelectorAll(sel);
-  for (const mark of marks) {
-    const parent = mark.parentNode;
-    if (!parent) continue;
-    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-    parent.removeChild(mark);
-  }
-  textLayer.normalize();
-}
-
-// Wrap matched characters in a <mark> element. Using DOM marks (instead of
-// CSS Custom Highlight API or ::selection) is the only way to get pixel-
-// perfect highlight bounds inside a PDF.js text layer: spans carry a
-// `transform: scaleX(N)` to align text with canvas glyphs, and Range-based
-// rendering does not measure the post-transform geometry precisely. A child
-// <mark> element inherits the same transform, so its background rectangle
-// aligns with the visible glyphs character-for-character.
-function splitAndMark(textNode, localStart, localEnd, className) {
-  const parent = textNode.parentNode;
-  if (!parent) return null;
-  const text = textNode.textContent || "";
-  const before = text.slice(0, localStart);
-  const middle = text.slice(localStart, localEnd);
-  const after = text.slice(localEnd);
-  if (!middle) return null;
-
-  const mark = document.createElement("mark");
-  mark.className = className;
-  mark.textContent = middle;
-
-  if (after) {
-    const afterNode = document.createTextNode(after);
-    parent.insertBefore(afterNode, textNode.nextSibling);
-  }
-  parent.insertBefore(mark, textNode);
-  if (before) textNode.textContent = before;
-  else parent.removeChild(textNode);
-  return mark;
+  const container = slot.wrapper.querySelector(".od-search-highlights");
+  if (container) container.remove();
 }
 
 function applyHighlightsToPage(pageNum) {
-  clearMarksFromPage(pageNum);
-  const slot = pageSlots.get(pageNum);
-  if (!slot) return;
-  const textLayer = slot.wrapper.querySelector(".textLayer");
-  if (!textLayer) return;
-
-  // Collect matches that belong to this page.
   const pageMatches = [];
   for (let i = 0; i < searchMatches.length; i++) {
     const m = searchMatches[i];
     if (m.page === pageNum) {
-      pageMatches.push({
-        start: m.start,
-        end: m.end,
-        isCurrent: i === searchCurrentIdx,
-      });
+      pageMatches.push({ ...m, isCurrent: i === searchCurrentIdx });
     }
   }
+
+  clearHighlightsFromPage(pageNum);
   if (pageMatches.length === 0) return;
 
-  // First, walk every text node once to collect (textNode, localStart,
-  // localEnd, className) tuples for each match overlap. We must collect
-  // before mutating, otherwise the walker gets confused by inserted nodes.
-  const ops = [];
-  const walker = document.createTreeWalker(textLayer, NodeFilter.SHOW_TEXT);
-  let cursor = 0;
-  let node;
-  while ((node = walker.nextNode())) {
-    const text = node.textContent || "";
-    const len = text.length;
-    const ns = cursor;
-    const ne = cursor + len;
-    cursor = ne;
-    if (len === 0) continue;
-    for (const m of pageMatches) {
-      if (m.end <= ns) continue;
-      if (m.start >= ne) continue;
-      const localStart = Math.max(0, m.start - ns);
-      const localEnd = Math.min(len, m.end - ns);
-      if (localStart >= localEnd) continue;
-      ops.push({
-        node,
-        localStart,
-        localEnd,
-        className: m.isCurrent
-          ? "opendict-search-hit-current"
-          : "opendict-search-hit",
-      });
+  const index = getPageTextIndex(pageNum);
+  if (!index) return;
+  pageTextCache.set(pageNum, index.canonicalText);
+
+  const slot = pageSlots.get(pageNum);
+  if (!slot) return;
+  const wrapper = slot.wrapper;
+  const wrapperRect = wrapper.getBoundingClientRect();
+
+  const container = document.createElement("div");
+  container.className = "od-search-highlights";
+  container.setAttribute("data-od", "");
+
+  for (const m of pageMatches) {
+    const ranges = buildDomRangesFromCanonicalRange(index, m.start, m.end);
+    const className = m.isCurrent
+      ? "opendict-search-hit-current"
+      : "opendict-search-hit";
+
+    for (const r of ranges) {
+      if (r.startOffset >= r.endOffset) continue;
+
+      const range = document.createRange();
+      range.setStart(r.node, r.startOffset);
+      range.setEnd(r.node, r.endOffset);
+      const rects = range.getClientRects();
+      range.detach?.();
+
+      for (let j = 0; j < rects.length; j++) {
+        const rect = rects[j];
+        if (rect.width === 0 && rect.height === 0) continue;
+
+        const div = document.createElement("div");
+        div.className = className;
+        div.setAttribute("data-od", "");
+        div.style.left = `${rect.left - wrapperRect.left}px`;
+        div.style.top = `${rect.top - wrapperRect.top}px`;
+        div.style.width = `${rect.width}px`;
+        div.style.height = `${rect.height}px`;
+        container.appendChild(div);
+      }
     }
   }
 
-  // Group ops by node, then process each node's ops in descending order so
-  // earlier slices don't shift later offsets within the same node.
-  const byNode = new Map();
-  for (const op of ops) {
-    if (!byNode.has(op.node)) byNode.set(op.node, []);
-    byNode.get(op.node).push(op);
-  }
-  for (const [n, list] of byNode) {
-    list.sort((a, b) => b.localStart - a.localStart);
-    for (const op of list) {
-      // The text node may have been replaced by an earlier op on the same
-      // node. After splitAndMark, the residual text node holds the BEFORE
-      // slice. Subsequent (smaller localStart) ops on this node act on the
-      // SAME node since they only touch the BEFORE region.
-      splitAndMark(op.node, op.localStart, op.localEnd, op.className);
+  if (container.children.length > 0) {
+    // Insert before textLayer (z-index:2) so highlights sit between
+    // the canvas and the transparent text overlay.
+    const textLayer = wrapper.querySelector(".textLayer");
+    if (textLayer) {
+      wrapper.insertBefore(container, textLayer);
+    } else {
+      wrapper.appendChild(container);
     }
   }
 }
@@ -781,29 +695,22 @@ function refreshHighlights() {
     if (pagesWithMatches.has(pageNum)) {
       applyHighlightsToPage(pageNum);
     } else {
-      clearMarksFromPage(pageNum);
+      clearHighlightsFromPage(pageNum);
     }
   }
 }
 
 // Hook called by renderPageContent after a textLayer is freshly rendered.
 function onPageTextLayerRendered(pageNum) {
-  // If we have a search session, upgrade this page's cached text to the
-  // DOM-precise version. PDF.js may have inserted spaces / merged items
-  // when building the layer, so the DOM string can differ from the
-  // getTextContent join we used as fallback.
-  if (searchTextExtracted) {
-    const domText = readPageTextFromDom(pageNum);
-    if (domText !== null && pageTextCache.get(pageNum) !== domText) {
-      pageTextCache.set(pageNum, domText);
-      // Pageʼs text changed → rerun search so match offsets line up with
-      // the now-authoritative DOM text. runSearch handles refreshHighlights.
-      if (!searchBar.hidden && searchInput.value.trim()) {
-        runSearch(searchInput.value.trim());
-        return;
-      }
-    }
+  clearPageTextIndex(pageNum);
+  const index = getPageTextIndex(pageNum);
+  if (index) pageTextCache.set(pageNum, index.canonicalText);
+
+  if (!searchBar.hidden && searchInput.value.trim()) {
+    runSearch(searchInput.value.trim());
+    return;
   }
+
   if (searchMatches.length === 0) return;
   if (!searchMatches.some((m) => m.page === pageNum)) return;
   refreshHighlights();
@@ -812,30 +719,47 @@ function onPageTextLayerRendered(pageNum) {
 function runSearch(query) {
   searchMatches = [];
   searchCurrentIdx = -1;
-  if (!query) {
+  clearSearchHighlights();
+
+  const needle = normalizeSearchQuery(query);
+  if (!needle) {
     updateSearchCount();
-    clearSearchHighlights();
     return;
   }
-  const needle = query.toLowerCase();
-  for (const [page, text] of pageTextCache) {
-    const haystack = text.toLowerCase();
-    let from = 0;
-    while (from <= haystack.length - needle.length) {
-      const idx = haystack.indexOf(needle, from);
-      if (idx < 0) break;
-      searchMatches.push({ page, start: idx, end: idx + needle.length });
-      from = idx + needle.length;
+
+  for (const [page, cached] of pageTextCache) {
+    const index = getPageTextIndex(page);
+    if (index) {
+      pageTextCache.set(page, index.canonicalText);
+      for (const m of findMatchesInIndex(index, needle)) {
+        searchMatches.push({ page, start: m.start, end: m.end });
+      }
+      continue;
+    }
+
+    // cached can be a string (from index) or { joined, spaced } (from coarse extraction)
+    const haystacks =
+      typeof cached === "string"
+        ? [cached]
+        : [cached?.joined, cached?.spaced].filter(Boolean);
+
+    for (const haystack of haystacks) {
+      let from = 0;
+      while (from <= haystack.length - needle.length) {
+        const start = haystack.indexOf(needle, from);
+        if (start < 0) break;
+        searchMatches.push({ page, start, end: start + needle.length });
+        from = start + needle.length;
+      }
     }
   }
-  // Sort by page, then by start offset.
+
   searchMatches.sort((a, b) => a.page - b.page || a.start - b.start);
   if (searchMatches.length > 0) {
     searchCurrentIdx = 0;
     jumpToMatch(0);
   } else {
     updateSearchCount();
-    clearSearchHighlights();
   }
 }
 
@@ -845,9 +769,8 @@ function jumpToMatch(idx) {
   const m = searchMatches[idx];
   scrollToPage(m.page);
   updateSearchCount();
-  // Wait one frame so the page slot is at least scheduled to render, then
-  // refresh highlights. Pages that aren't yet rendered will be picked up
-  // again via onPageTextLayerRendered.
+  // Wait two frames so lazy rendering can schedule; onPageTextLayerRendered will
+  // rerun search with precise DOM offsets if the target page was not rendered.
   requestAnimationFrame(() => requestAnimationFrame(refreshHighlights));
 }
 
