@@ -33,8 +33,8 @@
 - **PDF outline sidebar**: Auto-extracts the document outline, click any chapter to jump
 - **PDF eye-care mode**: Toggle warm-tone filter to reduce blue light for long sessions
 - **PDF smart zoom**: Instant CSS-transform zoom + delayed re-render at higher resolution — no flicker
-- **PDF in-document search**: `Ctrl+F` opens a search bar that highlights all matches via the CSS Custom Highlight API; `Enter` / `Shift+Enter` cycle through results
-- **PDF accurate word selection**: double-click selects exactly one word, even when the underlying PDF text is split across multiple glyph spans
+- **PDF in-document search**: `Ctrl+F` opens a search bar with canonical-text indexing for accurate matching across ligatures, split words, and soft hyphens; highlights via positioned overlays; `Enter` / `Shift+Enter` cycle through results
+- **PDF accurate word selection**: double-click selects exactly one word using geometry-based character lookup, even when the underlying PDF text is split across multiple glyph spans
 
 ---
 
@@ -232,8 +232,11 @@ browser-extension-OpenDict/
 ├── popup.html         # Settings page HTML + CSS (light theme)
 ├── popup.js           # Settings logic: config management, verification, export
 ├── pdf-viewer.html    # Built-in PDF reader page
-├── pdf-viewer.js      # PDF rendering: lazy load, smart zoom, outline, eye-care
+├── pdf-viewer.js      # PDF rendering: lazy load, smart zoom, outline, eye-care, search
+├── pdf-text-index-core.mjs  # Canonical text indexing: normalization, ligatures, synthetic spaces
 ├── pdf-viewer.css     # PDF reader styles
+├── tests/
+│   └── pdf-text-index.test.mjs  # Text index unit tests
 ├── lib/pdfjs/
 │   ├── pdf.min.mjs        # PDF.js 4.x main library
 │   └── pdf.worker.min.mjs # PDF.js Web Worker
