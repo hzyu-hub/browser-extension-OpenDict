@@ -741,9 +741,14 @@ function applyHighlightsToPage(pageNum) {
 
   for (const m of pageMatches) {
     const ranges = buildDomRangesFromCanonicalRange(index, m.start, m.end);
-    const className = m.isCurrent
-      ? "opendict-search-hit-current"
-      : "opendict-search-hit";
+    let className;
+    if (m.isCurrent) {
+      className = "opendict-search-hit-current";
+    } else if (m.type === "approximate") {
+      className = "opendict-search-hit-approximate";
+    } else {
+      className = "opendict-search-hit";
+    }
 
     for (const r of ranges) {
       if (r.startOffset >= r.endOffset) continue;
@@ -759,8 +764,12 @@ function applyHighlightsToPage(pageNum) {
         if (rect.width === 0 && rect.height === 0) continue;
 
         const div = document.createElement("div");
-        div.className = className;
-        div.setAttribute("data-od", "");
+          div.className = className;
+          div.setAttribute("data-od", "");
+          if (m.type === "approximate") {
+            div.setAttribute("aria-label", "approximate match");
+            div.setAttribute("role", "mark");
+          }
         div.style.left = `${rect.left - wrapperRect.left}px`;
         div.style.top = `${rect.top - wrapperRect.top}px`;
         div.style.width = `${rect.width}px`;
