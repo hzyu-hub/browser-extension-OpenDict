@@ -3,6 +3,7 @@
 
 const SOFT_HYPHEN_RE = /\u00ad/g;
 const WHITESPACE_RE = /\s+/g;
+const MN_MC_RE = /\p{Mn}|\p{Mc}/gu;
 const WORD_FALLBACK_RE = /[\p{Script=Han}]+|[\p{Script=Hiragana}\p{Script=Katakana}]+|[\p{Script=Hangul}]+|[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
 
 export function isCombiningMark(cp) {
@@ -32,7 +33,8 @@ export function isCombiningMark(cp) {
 
 export function normalizeSearchQuery(text) {
   return String(text || "")
-    .normalize("NFKC")
+    .normalize("NFKD")
+    .replace(MN_MC_RE, "")
     .replace(SOFT_HYPHEN_RE, "")
     .replace(WHITESPACE_RE, " ")
     .trim()
@@ -55,7 +57,13 @@ export function normalizeCoarseText(items) {
 
 function normalizeRawChar(ch) {
   if (ch === "\u00ad") return "";
-  return ch.normalize("NFKC").toLowerCase();
+  const decomposed = ch.normalize("NFKD");
+  let result = "";
+  for (const c of decomposed) {
+    const cp = c.codePointAt(0);
+    if (!isCombiningMark(cp)) result += c;
+  }
+  return result.toLowerCase();
 }
 
 function isWhitespace(ch) {

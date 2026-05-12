@@ -174,6 +174,14 @@ test("forwardOffsets uses 0xFFFFFFFF sentinel for synthetic positions", () => {
  assert.ok(index.forwardOffsets.length > 0);
 });
 
+test("NFKD normalization makes accented search accent-insensitive", () => {
+  const index = buildTextIndexFromRuns([run("r\u00e9sum\u00e9", 0, 60)]);
+  // NFKD decomposes é → e + ◌́, combining mark stripped → "resume"
+  assert.equal(index.canonicalText, "resume");
+  assert.equal(findMatchesInIndex(index, "resume").length, 1);
+  assert.equal(findMatchesInIndex(index, "r\u00e9sum\u00e9").length, 1);
+});
+
 test("code-point-aware iteration handles supplementary plane characters", () => {
  const supplementary = String.fromCodePoint(0x20000);
  const text = "a" + supplementary + "b";
