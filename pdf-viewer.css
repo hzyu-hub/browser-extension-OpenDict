@@ -345,3 +345,22 @@ body {
 .od-search-highlights > .opendict-search-hit-current {
   background-color: rgba(255, 152, 0, 0.75);
 }
+
+/* --- Approximate (fuzzy) match highlight --- */
+.od-search-highlights > .opendict-search-hit-approximate {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 2px;
+  border: 2px dashed rgba(255, 152, 0, 0.7);
+  background-color: rgba(255, 152, 0, 0.2);
+}
+
+/* --- Current match flash animation (on match disappearance → nearest jump) --- */
+.od-search-highlights > .opendict-search-hit-current-flash {
+  animation: od-match-flash 0.4s ease-out;
+}
+
+@keyframes od-match-flash {
+  0%   { outline: 3px solid #ff6600; outline-offset: 1px; }
+  100% { outline: transparent; outline-offset: 1px; }
+}
