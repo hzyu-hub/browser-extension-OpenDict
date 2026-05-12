@@ -522,10 +522,10 @@ test("expandToWordBoundaries: out of range returns null", () => {
   assert.equal(expandToWordBoundaries(null, 0), null);
 });
 
-test("expandToWordBoundaries: digits are separate from letters", () => {
+test("expandToWordBoundaries: digits are part of word", () => {
   const text = "abc123 xyz";
-  assert.deepEqual(expandToWordBoundaries(text, 4), { start: 3, end: 6 }); // "123" (clicking on digit)
-  assert.deepEqual(expandToWordBoundaries(text, 1), { start: 0, end: 3 }); // "abc" (clicking on letter)
+  assert.deepEqual(expandToWordBoundaries(text, 4), { start: 0, end: 6 }); // "abc123"
+  assert.deepEqual(expandToWordBoundaries(text, 1), { start: 0, end: 6 }); // "abc123"
 });
 
 test("expandToWordBoundaries: multiple punctuation boundaries", () => {
@@ -827,11 +827,10 @@ test("table row: pure-alphabetic words with large gap are separated", () => {
   assert.equal(ranges[0].node, nodeA, "range should be in nodeA");
 });
 
-test("table row: no synthetic space causes spanning selection bug", () => {
+test("table row: same text node without gap treats adjacent alpha+digits as one word", () => {
   // If runs are in the SAME text node (PDF.js sometimes combines items),
-  // there's no synthetic space insertion between them. Verify that the
-  // letter↔digit boundary in expandToWordBoundaries still prevents
-  // "student" from expanding into digits.
+  // and there's no visual gap, adjacent letters+digits form one word.
+  // The real protection for table layouts is visual-order sorting + synthetic space.
   const node = { text: "Student ID0472792" };
   const runA = {
     text: "Student ID0472792",
@@ -848,17 +847,11 @@ test("table row: no synthetic space causes spanning selection bug", () => {
   assert.ok(bounds);
   assert.equal(index.canonicalText.slice(bounds.start, bounds.end), "student");
 
-  // Clicking on 'i' of "id" — letter↔digit boundary stops before '0'
+  // Clicking on 'i' of "id0472792" — no letter↔digit boundary, selects whole token
   const boundsID = expandToWordBoundaries(index.canonicalText, 8);
   assert.ok(boundsID);
-  assert.equal(index.canonicalText.slice(boundsID.start, boundsID.end), "id",
-    "letter↔digit boundary should prevent 'id' from expanding into '0472792'");
-
-  // Clicking on '0' should select only "0472792"
-  const boundsNum = expandToWordBoundaries(index.canonicalText, 10);
-  assert.ok(boundsNum);
-  assert.equal(index.canonicalText.slice(boundsNum.start, boundsNum.end), "0472792",
-    "digit group should be selected independently");
+  assert.equal(index.canonicalText.slice(boundsID.start, boundsID.end), "id0472792",
+    "adjacent alpha+digits in same node form one word");
 });
 
 // --- Visual-order sorting tests ---

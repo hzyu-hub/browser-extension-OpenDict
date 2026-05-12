@@ -563,9 +563,6 @@ export function expandToWordBoundaries(text, charIndex) {
     return { start: charIndex, end: charIndex + ch.length };
   }
 
-  // Determine the "class" of the clicked character: alpha vs digit
-  const startIsDigit = cp >= 0x30 && cp <= 0x39;
-
   // Expand left
   let start = charIndex;
   while (start > 0) {
@@ -588,9 +585,6 @@ export function expandToWordBoundaries(text, charIndex) {
     if (isCJK(actualCp) || /\s/.test(String.fromCodePoint(actualCp)) || isWordBoundaryPunct(actualCp)) {
       break;
     }
-    // Break at letter↔digit boundary
-    const prevIsDigit = actualCp >= 0x30 && actualCp <= 0x39;
-    if (prevIsDigit !== startIsDigit) break;
     start -= actualLen;
   }
 
@@ -608,9 +602,6 @@ export function expandToWordBoundaries(text, charIndex) {
     if (isCJK(nextCp) || /\s/.test(nextCh) || isWordBoundaryPunct(nextCp)) {
       break;
     }
-    // Break at letter↔digit boundary
-    const nextIsDigit = nextCp >= 0x30 && nextCp <= 0x39;
-    if (nextIsDigit !== startIsDigit) break;
     end += nextLen;
   }
 
