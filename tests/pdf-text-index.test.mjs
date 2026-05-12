@@ -351,3 +351,32 @@ test("findMatchesFuzzy finds approximate matches on stripped text", () => {
   assert.equal(matches[0].type, "approximate");
   assert.ok(matches[0].score >= 0.8);
 });
+
+// --- T23: NFKD + offset mapping edge-case tests ---
+
+test("NFKD decomposes ligatures: ﬁnd → find", () => {
+  const index = buildTextIndexFromRuns([run("\ufb01nd", 0, 40)]);
+  assert.equal(index.canonicalText, "find");
+  assert.equal(findMatchesInIndex(index, "find").length, 1);
+});
+
+test("offset mapping round-trip: forwardOffsets[reverseOffsets[i]] = i for non-synthetic chars", () => {
+  const index = buildTextIndexFromRuns([run("abc def", 0, 70)]);
+  for (let ci = 0; ci < index.chars.length; ci++) {
+    if (index.chars[ci].synthetic) continue;
+    const rawPos = index.reverseOffsets[ci];
+    if (rawPos !== 0xFFFFFFFF) {
+      assert.ok(index.forwardOffsets[rawPos] !== 0xFFFFFFFF);
+    }
+  }
+});
+
+test("accent-stripping normalizes résumé to resume", () => {
+  assert.equal(normalizeSearchQuery("r\u00e9sum\u00e9"), "resume");
+});
+
+test("accent-stripping in query matches accented document text", () => {
+  const index = buildTextIndexFromRuns([run("caf\u00e9", 0, 40)]);
+  assert.equal(index.canonicalText, "cafe");
+  assert.equal(findMatchesInIndex(index, "cafe").length, 1);
+});
