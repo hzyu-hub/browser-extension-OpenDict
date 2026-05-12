@@ -935,13 +935,26 @@ function jumpToMatch(idx) {
   requestAnimationFrame(() => requestAnimationFrame(refreshHighlights));
 }
 
-function updateSearchCount() {
+function updateSearchCount(progressBatch = null) {
   const total = searchMatches.length;
-  if (total === 0) {
+  const exactCount = searchMatches.filter(m => m.type === "exact" || m.type === "whitespace").length;
+  const approxCount = searchMatches.filter(m => m.type === "approximate").length;
+
+  if (total === 0 && !progressBatch) {
     searchCount.textContent = searchInput.value.trim() ? "0/0" : "";
+  } else if (total === 0 && progressBatch && !progressBatch.done) {
+    searchCount.textContent = `Indexing… ${progressBatch.pagesIndexed}/${progressBatch.totalPages}`;
   } else {
-    searchCount.textContent = `${searchCurrentIdx + 1}/${total}`;
+    let text = `${searchCurrentIdx + 1}/${total}`;
+    if (approxCount > 0) {
+      text += ` (${exactCount} exact, ${approxCount} approx)`;
+    }
+    if (progressBatch && !progressBatch.done) {
+      text += ` (indexing… ${progressBatch.pagesIndexed}/${progressBatch.totalPages})`;
+    }
+    searchCount.textContent = text;
   }
+
   searchPrevBtn.disabled = total === 0;
   searchNextBtn.disabled = total === 0;
 }
