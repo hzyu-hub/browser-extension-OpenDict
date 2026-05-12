@@ -380,3 +380,34 @@ test("accent-stripping in query matches accented document text", () => {
   assert.equal(index.canonicalText, "cafe");
   assert.equal(findMatchesInIndex(index, "cafe").length, 1);
 });
+
+// --- T24: whitespace-tolerant + skip-table edge-case tests ---
+
+test("whitespace-tolerant finds match across synthetic space gap", () => {
+  const index = buildTextIndexFromRuns([
+    run("hel", 0, 30),
+    run("lo world", 35, 80),
+  ]);
+  const matches = findMatchesWhitespaceTolerant(index, "helloworld");
+  assert.ok(matches.length >= 1);
+  assert.equal(matches[0].type, "whitespace");
+});
+
+test("whitespace-tolerant matches multi-word query with internal spaces", () => {
+  const index = buildTextIndexFromRuns([run("hello world", 0, 100)]);
+  const matches = findMatchesWhitespaceTolerant(index, "helloworld");
+  assert.ok(matches.length >= 1);
+});
+
+test("skip-table handles all-whitespace text", () => {
+  const table = buildWhitespaceSkipTable("   ");
+  assert.equal(table.length, 0);
+});
+
+test("skip-table handles mixed whitespace types", () => {
+  const table = buildWhitespaceSkipTable("a\tb\nc");
+  assert.equal(table.length, 3); // a, b, c
+  assert.equal(table[0], 0); // 'a' at position 0
+  assert.equal(table[1], 2); // 'b' at position 2
+  assert.equal(table[2], 4); // 'c' at position 4
+});
