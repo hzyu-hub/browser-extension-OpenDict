@@ -11,7 +11,6 @@ import {
   normalizeCoarseText,
   normalizeSearchQuery,
 } from "./pdf-text-index-core.mjs";
-import { fuzzySearch, fuzzyScore } from "./pdf-search-fuzzy.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "./lib/pdfjs/pdf.worker.min.mjs";
 
@@ -555,12 +554,13 @@ const toggleSearchBtn = document.getElementById("toggle-search");
 // pageNum → normalized coarse text. Rendered pages are upgraded to canonical
 // text from PageTextIndex; unrendered pages use getTextContent() as a fallback.
 const pageTextCache = new Map();
-let searchTextExtracted = false;
 
 // Each match: { page, start, end } — offsets in that page's canonical/coarse text.
 let searchMatches = [];
 let searchCurrentIdx = -1;
 let currentMatchId = null; // { page, start, end }
+let searchVersion = 0;
+let searchAbortController = null;
 
 function findMatchByIdentity(matches, id) {
   if (!id) return -1;
@@ -596,25 +596,109 @@ async function getCoarsePageText(pageNum) {
   }
 }
 
-async function extractAllPageTexts() {
-  if (searchTextExtracted || !pdfDoc) return;
-  searchTextExtracted = true;
-  const fetches = [];
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    if (pageTextCache.has(i)) continue;
-    const index = getPageTextIndex(i);
+async function* progressiveSearch(query, signal) {
+  const needle = normalizeSearchQuery(query);
+  if (!needle) return;
+
+  const maxEditDist = Math.min(3, Math.floor(needle.length * 0.2));
+  const totalPages = pdfDoc?.numPages || 0;
+  let pagesIndexed = 0;
+
+  for (let page = 1; page <= totalPages; page++) {
+    if (signal?.aborted) return;
+
+    const index = getPageTextIndex(page);
     if (index) {
-      pageTextCache.set(i, index.canonicalText);
-      continue;
+      pageTextCache.set(page, index.canonicalText);
+
+      let results = findMatchesInIndex(index, needle);
+      let matchType = "exact";
+
+      if (results.length === 0) {
+        results = findMatchesWhitespaceTolerant(index, needle);
+        matchType = "whitespace";
+      }
+
+      if (results.length === 0) {
+        results = findMatchesFuzzy(index, query, maxEditDist);
+        matchType = "approximate";
+      }
+
+      const matches = results.map(m => ({
+        page,
+        start: m.start,
+        end: m.end,
+        type: m.type || matchType,
+        source: "canonical",
+        ...(m.editDistance !== undefined ? { editDistance: m.editDistance, score: m.score } : {})
+      }));
+
+      if (matches.length > 0) yield { type: "matches", matches };
+    } else {
+      const cached = pageTextCache.get(page);
+      if (cached) {
+        const haystacks =
+          typeof cached === "string" ? [cached] : [cached?.joined, cached?.spaced].filter(Boolean);
+        let matches = [];
+        for (const haystack of haystacks) {
+          let from = 0;
+          while (from <= haystack.length - needle.length) {
+            const start = haystack.indexOf(needle, from);
+            if (start < 0) break;
+            matches.push({ page, start, end: start + needle.length, type: "exact", source: "coarse" });
+            from = start + needle.length;
+          }
+        }
+        if (matches.length > 0) yield { type: "matches", matches };
+      }
     }
-    // Use .catch() so one page failure doesn't kill the entire extraction.
-    fetches.push(
-      getCoarsePageText(i)
-        .then((text) => pageTextCache.set(i, text))
-        .catch(() => {})
-    );
+
+    pagesIndexed++;
+    yield { type: "progress", pagesIndexed, totalPages, done: page === totalPages };
   }
-  await Promise.allSettled(fetches);
+}
+
+async function runSearchProgressive(query) {
+  if (searchAbortController) searchAbortController.abort();
+  searchAbortController = new AbortController();
+  const myVersion = ++searchVersion;
+
+  searchMatches = [];
+  searchCurrentIdx = -1;
+  clearSearchHighlights();
+
+  const needle = normalizeSearchQuery(query);
+  if (!needle) {
+    updateSearchCount();
+    return;
+  }
+
+  for await (const batch of progressiveSearch(query, searchAbortController.signal)) {
+    if (searchVersion !== myVersion) return;
+
+    if (batch.type === "matches") {
+      searchMatches.push(...batch.matches);
+      searchMatches.sort((a, b) => a.page - b.page || a.start - b.start);
+      if (currentMatchId) {
+        searchCurrentIdx = findMatchByIdentity(searchMatches, currentMatchId);
+      }
+      if (searchMatches.length > 0 && searchCurrentIdx < 0) {
+        searchCurrentIdx = 0;
+        jumpToMatch(0);
+      }
+      updateSearchCount();
+      refreshHighlights();
+    } else if (batch.type === "progress") {
+      updateSearchCount(batch);
+    }
+  }
+
+  searchMatches.sort((a, b) => a.page - b.page || a.start - b.start);
+  if (searchMatches.length > 0 && searchCurrentIdx < 0) {
+    searchCurrentIdx = 0;
+    jumpToMatch(0);
+  }
+  updateSearchCount();
 }
 
 function clearSearchHighlights() {
@@ -716,146 +800,13 @@ function onPageTextLayerRendered(pageNum) {
   if (index) pageTextCache.set(pageNum, index.canonicalText);
 
   if (!searchBar.hidden && searchInput.value.trim()) {
-    runSearch(searchInput.value.trim());
+    runSearchProgressive(searchInput.value.trim());
     return;
   }
 
   if (searchMatches.length === 0) return;
   if (!searchMatches.some((m) => m.page === pageNum)) return;
   refreshHighlights();
-}
-
-function runSearch(query, options = {}) {
-  searchMatches = [];
-  searchCurrentIdx = -1;
-  clearSearchHighlights();
-
-  const needle = normalizeSearchQuery(query);
-  if (!needle) {
-    updateSearchCount();
-    return;
-  }
-
-  const maxEditDist = Math.min(3, Math.floor(needle.length * 0.2));
-
-  // Tier 1: Exact match
-  let exactMatches = [];
-  for (const [page, cached] of pageTextCache) {
-    const index = getPageTextIndex(page);
-    if (index) {
-      pageTextCache.set(page, index.canonicalText);
-      for (const m of findMatchesInIndex(index, needle)) {
-        exactMatches.push({ page, start: m.start, end: m.end, type: "exact", source: "canonical" });
-      }
-      continue;
-    }
-    // Coarse text exact match
-    const haystacks =
-      typeof cached === "string"
-        ? [cached]
-        : [cached?.joined, cached?.spaced].filter(Boolean);
-    for (const haystack of haystacks) {
-      let from = 0;
-      while (from <= haystack.length - needle.length) {
-        const start = haystack.indexOf(needle, from);
-        if (start < 0) break;
-        exactMatches.push({ page, start, end: start + needle.length, type: "exact", source: "coarse" });
-        from = start + needle.length;
-      }
-    }
-  }
-
-  if (exactMatches.length > 0) {
-    searchMatches = exactMatches;
-  } else {
-    // Tier 2: Whitespace-tolerant
-    let wsMatches = [];
-    for (const [page] of pageTextCache) {
-      const index = getPageTextIndex(page);
-      if (index) {
-        for (const m of findMatchesWhitespaceTolerant(index, needle)) {
-          wsMatches.push({ page, start: m.start, end: m.end, type: "whitespace", source: "canonical" });
-        }
-      }
-    }
-    // Coarse-text whitespace-tolerant: strip ws from both, simple indexOf
-    for (const [page, cached] of pageTextCache) {
-      if (getPageTextIndex(page)) continue;
-      const haystacks =
-        typeof cached === "string"
-          ? [cached]
-          : [cached?.joined, cached?.spaced].filter(Boolean);
-      const strippedNeedleWs = needle.replace(/\s+/g, "");
-      for (const haystack of haystacks) {
-        const strippedHay = haystack.replace(/\s+/g, "");
-        let from = 0;
-        while (from <= strippedHay.length - strippedNeedleWs.length) {
-          const start = strippedHay.indexOf(strippedNeedleWs, from);
-          if (start < 0) break;
-          wsMatches.push({ page, start, end: start + strippedNeedleWs.length, type: "whitespace", source: "coarse" });
-          from = start + strippedNeedleWs.length;
-        }
-      }
-    }
-
-    if (wsMatches.length > 0) {
-      searchMatches = wsMatches;
-    } else if (options.fuzzy !== false && needle.length <= 64) {
-      // Tier 3: Fuzzy
-      let fuzzyMatches = [];
-      for (const [page] of pageTextCache) {
-        const index = getPageTextIndex(page);
-        if (index) {
-          for (const m of findMatchesFuzzy(index, query, maxEditDist)) {
-            fuzzyMatches.push({
-              page,
-              start: m.start,
-              end: m.end,
-              type: "approximate",
-              source: "canonical",
-              editDistance: m.editDistance,
-              score: m.score,
-            });
-          }
-        }
-      }
-      // Coarse-text fuzzy: run fuzzySearch on stripped coarse text
-      for (const [page, cached] of pageTextCache) {
-        if (getPageTextIndex(page)) continue;
-        const haystacks =
-          typeof cached === "string"
-            ? [cached]
-            : [cached?.joined, cached?.spaced].filter(Boolean);
-        const strippedNeedleFz = needle.replace(/\s+/g, "");
-        for (const haystack of haystacks) {
-          const strippedHay = haystack.replace(/\s+/g, "");
-          const fuzzyResults = fuzzySearch(strippedHay, strippedNeedleFz, maxEditDist);
-          for (const r of fuzzyResults) {
-            if (fuzzyScore(r.editDistance, strippedNeedleFz.length) >= 0.8) {
-              fuzzyMatches.push({
-                page,
-                start: r.start,
-                end: r.end,
-                type: "approximate",
-                source: "coarse",
-                editDistance: r.editDistance,
-                score: fuzzyScore(r.editDistance, strippedNeedleFz.length),
-              });
-            }
-          }
-        }
-      }
-      searchMatches = fuzzyMatches;
-    }
-  }
-
-  searchMatches.sort((a, b) => a.page - b.page || a.start - b.start);
-  if (searchMatches.length > 0) {
-    searchCurrentIdx = 0;
-    jumpToMatch(0);
-  } else {
-    updateSearchCount();
-  }
 }
 
 function jumpToMatch(idx) {
@@ -885,7 +836,7 @@ let searchDebounce = null;
 function scheduleSearch() {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => {
-    runSearch(searchInput.value.trim());
+    runSearchProgressive(searchInput.value.trim());
   }, 180);
 }
 
@@ -893,13 +844,8 @@ async function openSearch() {
   searchBar.hidden = false;
   searchInput.focus();
   searchInput.select();
-  if (!searchTextExtracted) {
-    searchCount.textContent = "Indexing…";
-    await extractAllPageTexts();
-    searchCount.textContent = "";
-  }
   if (searchInput.value.trim()) {
-    runSearch(searchInput.value.trim());
+    runSearchProgressive(searchInput.value.trim());
   }
 }
 
