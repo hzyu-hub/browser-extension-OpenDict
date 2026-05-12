@@ -724,6 +724,11 @@ async function* progressiveSearch(query, signal) {
       let results = findMatchesInIndex(index, needle);
       let matchType = "exact";
 
+      // If whole-word matching found nothing, fall back to substring matching
+      if (results.length === 0) {
+        results = findMatchesInIndex(index, needle, { wholeWord: false });
+      }
+
       if (results.length === 0) {
         results = findMatchesWhitespaceTolerant(index, needle);
         matchType = "whitespace";
@@ -950,6 +955,11 @@ function reSearchSinglePage(pageNum, query) {
   if (index) {
     let results = findMatchesInIndex(index, needle);
     let matchType = "exact";
+
+    // If whole-word matching found nothing, fall back to substring matching
+    if (results.length === 0) {
+      results = findMatchesInIndex(index, needle, { wholeWord: false });
+    }
 
     if (results.length === 0) {
       results = findMatchesWhitespaceTolerant(index, needle);

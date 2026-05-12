@@ -695,7 +695,21 @@ export function findMatchesFuzzy(index, query, maxEditDist, options = {}) {
     });
 }
 
-export function findMatchesInIndex(index, query) {
+function isWordCharAt(text, idx) {
+  if (idx < 0 || idx >= text.length) return false;
+  const cp = text.codePointAt(idx);
+  if (cp === undefined) return false;
+  if (cp <= 0x7F) {
+    // ASCII: a-z, A-Z, 0-9 are word chars
+    return (cp >= 0x61 && cp <= 0x7A) || (cp >= 0x41 && cp <= 0x5A) || (cp >= 0x30 && cp <= 0x39);
+  }
+  // Latin Extended, Cyrillic, Greek = word chars
+  if ((cp >= 0x00C0 && cp <= 0x024F) || (cp >= 0x0400 && cp <= 0x04FF) || (cp >= 0x0370 && cp <= 0x03FF)) return true;
+  // CJK, punctuation, whitespace, etc. = not word chars
+  return false;
+}
+
+export function findMatchesInIndex(index, query, { wholeWord = true } = {}) {
   const needle = normalizeSearchQuery(query);
   if (!index || !needle) return [];
   const matches = [];
@@ -704,11 +718,13 @@ export function findMatchesInIndex(index, query) {
     const start = index.canonicalText.indexOf(needle, from);
     if (start < 0) break;
     const end = start + needle.length;
-    matches.push({
-      start,
-      end,
-      ranges: buildDomRangesFromCanonicalRange(index, start, end),
-    });
+    if (!wholeWord || (!isWordCharAt(index.canonicalText, start - 1) && !isWordCharAt(index.canonicalText, end))) {
+      matches.push({
+        start,
+        end,
+        ranges: buildDomRangesFromCanonicalRange(index, start, end),
+      });
+    }
     from = end;
   }
   return matches;
