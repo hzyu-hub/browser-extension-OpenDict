@@ -11,6 +11,7 @@ import {
   resolveCanonicalToRaw,
   buildWhitespaceSkipTable,
   findMatchesWhitespaceTolerant,
+  buildTokens,
 } from "../pdf-text-index-core.mjs";
 
 function run(text, left, right, top = 0, bottom = 10) {
@@ -265,4 +266,53 @@ test("whitespace-tolerant resolves correct canonical offsets", () => {
   assert.equal(matches.length, 1);
   assert.ok(matches[0].start >= 0);
   assert.ok(matches[0].end > matches[0].start);
+});
+
+test("buildTokens v2: each CJK character is own token", () => {
+  const tokens = buildTokens("\u4e2d\u6587abc", { v2: true });
+  assert.equal(tokens.length, 3);
+  assert.equal(tokens[0].text, "\u4e2d");
+  assert.equal(tokens[1].text, "\u6587");
+  assert.equal(tokens[2].text, "abc");
+});
+
+test("buildTokens v2: number-unit compounds", () => {
+  const tokens = buildTokens("100ms v2.0 3.14 50km/h 2024-01-15", { v2: true });
+  const texts = tokens.map(t => t.text);
+  assert.ok(texts.includes("100ms"));
+  assert.ok(texts.includes("v2.0"));
+  assert.ok(texts.includes("3.14"));
+  assert.ok(texts.includes("50km/h"));
+  assert.ok(texts.includes("2024-01-15"));
+});
+
+test("buildTokens v2: Latin words with internal apostrophe", () => {
+  const tokens = buildTokens("don't it\u2019s", { v2: true });
+  const texts = tokens.map(t => t.text);
+  assert.ok(texts.includes("don't"));
+  assert.ok(texts.includes("it\u2019s"));
+});
+
+test("buildTokens v2 falls back to legacy when v2=false", () => {
+  const tokens = buildTokens("hello world", { v2: false });
+  assert.ok(tokens.length >= 2);
+});
+
+test("CJK-Latin boundary: \u4e2d\u6587abc → 2 CJK tokens + 1 Latin token", () => {
+  const tokens = buildTokens("\u4e2d\u6587abc", { v2: true });
+  assert.equal(tokens.length, 3);
+  assert.equal(tokens[0].text, "\u4e2d");
+  assert.equal(tokens[1].text, "\u6587");
+  assert.equal(tokens[2].text, "abc");
+});
+
+test("number-unit: pH7 is a letter-led compound", () => {
+  const tokens = buildTokens("pH7", { v2: true });
+  assert.equal(tokens.length, 1);
+  assert.equal(tokens[0].text, "pH7");
+});
+
+test("buildTokens v2: pure whitespace returns empty", () => {
+  const tokens = buildTokens(" ", { v2: true });
+  assert.equal(tokens.length, 0);
 });

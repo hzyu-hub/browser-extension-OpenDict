@@ -249,8 +249,86 @@ export function buildTextIndexFromTextLayer(textLayer, options = {}) {
  return buildTextIndexFromRuns(collectTextRunsFromTextLayer(textLayer), options);
 }
 
-export function buildTokens(canonicalText) {
-  const text = String(canonicalText || "");
+function isCJK(cp) {
+  return (cp >= 0x4E00 && cp <= 0x9FFF) || // CJK Unified Ideographs
+    (cp >= 0x3400 && cp <= 0x4DBF) || // CJK Extension A
+    (cp >= 0x3040 && cp <= 0x309F) || // Hiragana
+    (cp >= 0x30A0 && cp <= 0x30FF) || // Katakana
+    (cp >= 0xAC00 && cp <= 0xD7AF) || // Hangul Syllables
+    (cp >= 0xF900 && cp <= 0xFAFF) || // CJK Compatibility Ideographs
+    (cp >= 0x31F0 && cp <= 0x31FF) || // Katakana Phonetic Extensions
+    (cp >= 0xFF66 && cp <= 0xFF9F);   // Halfwidth Katakana
+}
+
+function isLatinWordChar(cp) {
+  return (cp >= 0x0041 && cp <= 0x005A) || // A-Z
+    (cp >= 0x0061 && cp <= 0x007A) || // a-z
+    (cp >= 0x00C0 && cp <= 0x024F) || // Latin Extended
+    (cp >= 0x0400 && cp <= 0x04FF) || // Cyrillic
+    (cp >= 0x0370 && cp <= 0x03FF);   // Greek
+}
+
+function isDigit(cp) {
+  return cp >= 0x0030 && cp <= 0x0039;
+}
+
+function buildTokensV2(text) {
+  if (!text) return [];
+  const tokens = [];
+  let i = 0;
+  while (i < text.length) {
+    const cp = text.codePointAt(i);
+    const ch = String.fromCodePoint(cp);
+    const chLen = ch.length;
+
+    if (isCJK(cp)) {
+      tokens.push({ text: ch, start: i, end: i + chLen });
+      i += chLen;
+      continue;
+    }
+
+    // Try number-unit compound (digit-led)
+    if (isDigit(cp)) {
+      const rest = text.slice(i);
+      const m = rest.match(/^(\d+(?:\.\d+)*(?:[\/\-:]\d+(?:\.\d+)*)*[a-zA-Z\/]+)/);
+      if (m) {
+        tokens.push({ text: m[1], start: i, end: i + m[1].length });
+        i += m[1].length;
+        continue;
+      }
+      // Pure number
+      const m2 = rest.match(/^(\d+(?:\.\d+)*(?:[\/\-:]\d+(?:\.\d+)*)*)/);
+      if (m2) {
+        tokens.push({ text: m2[1], start: i, end: i + m2[1].length });
+        i += m2[1].length;
+        continue;
+      }
+    }
+
+    // Try letter-led number compound (v2.0, pH7)
+    if (isLatinWordChar(cp)) {
+      const rest = text.slice(i);
+      const m = rest.match(/^([a-zA-Z]+\d+(?:\.\d+)*(?:[\/\-:]\d+(?:\.\d+)*)*)/);
+      if (m && m[1].length > 1) {
+        tokens.push({ text: m[1], start: i, end: i + m[1].length });
+        i += m[1].length;
+        continue;
+      }
+      // Latin word with internal apostrophe/hyphen
+      const m2 = rest.match(/^([a-zA-Z\u00C0-\u024F\u0400-\u04FF\u0370-\u03FF]+(?:['\u2019\u2018\-][a-zA-Z\u00C0-\u024F\u0400-\u04FF\u0370-\u03FF]+)*)/);
+      if (m2) {
+        tokens.push({ text: m2[1], start: i, end: i + m2[1].length });
+        i += m2[1].length;
+        continue;
+      }
+    }
+
+    i += chLen; // skip punctuation, whitespace
+  }
+  return tokens;
+}
+
+function buildTokensLegacy(text) {
   if (!text) return [];
 
   if (typeof Intl !== "undefined" && Intl.Segmenter) {
@@ -275,6 +353,13 @@ export function buildTokens(canonicalText) {
     });
   }
   return tokens;
+}
+
+export function buildTokens(canonicalText, options = {}) {
+  const text = String(canonicalText || "");
+  if (!text) return [];
+  if (options.v2) return buildTokensV2(text);
+  return buildTokensLegacy(text);
 }
 
 export function findTokenContaining(index, canonicalIndex) {
