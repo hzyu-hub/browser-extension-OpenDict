@@ -860,3 +860,83 @@ test("table row: no synthetic space causes spanning selection bug", () => {
   assert.equal(index.canonicalText.slice(boundsNum.start, boundsNum.end), "0472792",
     "digit group should be selected independently");
 });
+
+// --- Visual-order sorting tests ---
+// These verify that runs must be in visual reading order (left-to-right,
+// top-to-bottom) for correct synthetic space insertion.  The sort in
+// collectTextRunsFromTextLayer ensures this; here we test the effect on
+// buildTextIndexFromRuns directly.
+
+test("runs in visual order (Name left, Yu right) get synthetic space between them", () => {
+  // "Name" is visually on the LEFT, "Hongzhi Yu" is on the RIGHT (same line)
+  const nameRun = run("Name", 0, 40);
+  const yuRun = run("Hongzhi Yu", 200, 300);
+  const index = buildTextIndexFromRuns([nameRun, yuRun]);
+  assert.equal(index.canonicalText, "name hongzhi yu",
+    "visual-order runs should get a synthetic space due to large gap");
+});
+
+test("runs in DOM order (Yu before Name) without sort produce merged text (bug scenario)", () => {
+  // DOM order: "Hongzhi Yu" span comes first, "Name" span comes second
+  // but visually "Name" is on the LEFT and "Hongzhi Yu" is on the RIGHT.
+  // Without sorting, the gap calculation sees a negative/zero gap → no space.
+  const yuRun = run("Hongzhi Yu", 200, 300);
+  const nameRun = run("Name", 0, 40);
+  // In wrong (DOM) order, "Yu" is followed by "Name" with nameRun.left < yuRun.right
+  // → gap is 0 (clamped) → no synthetic space → merged "hongzhi yuname"
+  const index = buildTextIndexFromRuns([yuRun, nameRun]);
+  assert.equal(index.canonicalText, "hongzhi yuname",
+    "without visual-order sort, DOM-ordered runs merge incorrectly");
+});
+
+test("collectTextRunsFromTextLayer sorts runs by visual position (verified via buildTextIndexFromRuns)", () => {
+  // Simulate what collectTextRunsFromTextLayer produces AFTER sorting:
+  // Even though DOM order is [yuRun, nameRun], after sort by left position
+  // on the same line, the order becomes [nameRun, yuRun].
+  const yuRun = run("Hongzhi Yu", 200, 300);
+  const nameRun = run("Name", 0, 40);
+  // Apply the same sort logic that collectTextRunsFromTextLayer uses
+  const runs = [yuRun, nameRun];
+  runs.sort((a, b) => {
+    const ay = a.rect?.top ?? 0;
+    const by = b.rect?.top ?? 0;
+    const lineThreshold = Math.min(a.rect?.height ?? 10, b.rect?.height ?? 10) * 0.5;
+    if (Math.abs(ay - by) < lineThreshold) {
+      return (a.rect?.left ?? 0) - (b.rect?.left ?? 0);
+    }
+    return ay - by;
+  });
+  const index = buildTextIndexFromRuns(runs);
+  assert.equal(index.canonicalText, "name hongzhi yu",
+    "after visual-order sort, Name (left) comes before Hongzhi Yu (right) with space");
+  // Verify "Name" and "Yu" are NOT co-highlighted when selecting "name"
+  const matches = findMatchesInIndex(index, "name");
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].start, 0);
+  assert.equal(matches[0].end, 4);
+  // The match should only reference the "Name" node
+  assert.equal(matches[0].ranges.length, 1);
+  assert.equal(matches[0].ranges[0].node.text, "Name");
+});
+
+test("visual-order sort handles multi-line runs (top-to-bottom then left-to-right)", () => {
+  // Line 1: "Title" at top-left, "Author" at top-right
+  // Line 2: "Abstract" at bottom-left
+  // DOM order might be scrambled
+  const authorRun = run("Author", 200, 280, 0, 10);
+  const abstractRun = run("Abstract", 0, 80, 20, 30);
+  const titleRun = run("Title", 0, 50, 0, 10);
+  const runs = [authorRun, abstractRun, titleRun];
+  runs.sort((a, b) => {
+    const ay = a.rect?.top ?? 0;
+    const by = b.rect?.top ?? 0;
+    const lineThreshold = Math.min(a.rect?.height ?? 10, b.rect?.height ?? 10) * 0.5;
+    if (Math.abs(ay - by) < lineThreshold) {
+      return (a.rect?.left ?? 0) - (b.rect?.left ?? 0);
+    }
+    return ay - by;
+  });
+  const index = buildTextIndexFromRuns(runs);
+  assert.equal(index.canonicalText, "title author abstract",
+    "multi-line sort: line 1 left-to-right, then line 2");
+});

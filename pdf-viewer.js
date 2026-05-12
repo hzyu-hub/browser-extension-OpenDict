@@ -588,7 +588,6 @@ function selectDomRanges(ranges, pageWrapper) {
         console.warn(`[OD-selectDomRanges] Failed to create Range for entry:`, entry, err);
       }
     }
-    console.log(`[OD-selectDomRanges] ${ranges.length} entries → ${perEntryRanges.length} DOM Ranges, text="${text}"`);
     showSelectionOverlay(perEntryRanges, pageWrapper);
   }
 
@@ -619,46 +618,23 @@ function showSelectionOverlay(rangesOrRange, pageWrapper) {
   container.className = "od-selection-highlight";
   container.setAttribute("data-od", "");
 
-  // --- DEBUG: detailed per-range logging ---
-  console.group(`[OD-overlay] ${rangeList.length} range(s), wrapper at (${wrapperRect.left.toFixed(1)}, ${wrapperRect.top.toFixed(1)})`);
-  let totalRects = 0;
-
   for (let ri = 0; ri < rangeList.length; ri++) {
     const range = rangeList[ri];
     const rects = range.getClientRects();
-    if (!rects) {
-      console.log(`  range[${ri}]: NO rects (null)`);
-      continue;
-    }
-    const rangeText = range.toString();
-    const startNode = range.startContainer;
-    const endNode = range.endContainer;
-    console.log(`  range[${ri}]: text="${rangeText}" | startNode="${(startNode?.textContent || "").slice(0, 60)}" [${range.startOffset}] | endNode="${(endNode?.textContent || "").slice(0, 60)}" [${range.endOffset}] | ${rects.length} clientRect(s)`);
+    if (!rects) continue;
 
     for (let i = 0; i < rects.length; i++) {
       const rect = rects[i];
-      if (rect.width === 0 && rect.height === 0) {
-        console.log(`    rect[${i}]: SKIPPED (0x0)`);
-        continue;
-      }
-      totalRects++;
-      const cssLeft = `${rect.left - wrapperRect.left}px`;
-      const cssTop = `${rect.top - wrapperRect.top}px`;
-      const cssWidth = `${rect.width}px`;
-      const cssHeight = `${rect.height}px`;
-      console.log(`    rect[${i}]: css(left=${cssLeft}, top=${cssTop}, w=${cssWidth}, h=${cssHeight}) | client(left=${rect.left.toFixed(1)}, top=${rect.top.toFixed(1)}, w=${rect.width.toFixed(1)}, h=${rect.height.toFixed(1)})`);
+      if (rect.width === 0 && rect.height === 0) continue;
       const div = document.createElement("div");
       div.className = "od-selection-rect";
-      div.style.left = cssLeft;
-      div.style.top = cssTop;
-      div.style.width = cssWidth;
-      div.style.height = cssHeight;
+      div.style.left = `${rect.left - wrapperRect.left}px`;
+      div.style.top = `${rect.top - wrapperRect.top}px`;
+      div.style.width = `${rect.width}px`;
+      div.style.height = `${rect.height}px`;
       container.appendChild(div);
     }
   }
-  console.log(`  TOTAL: ${totalRects} rect(s) drawn`);
-  console.groupEnd();
-  // --- END DEBUG ---
 
   if (container.children.length > 0) {
     const textLayer = pageWrapper.querySelector(".textLayer");
@@ -705,44 +681,9 @@ function selectWordAtPoint(clientX, clientY, target = null) {
     wordEnd = bounds.end;
   }
 
-  // --- DEBUG: double-click word selection ---
   const selectedWord = index.canonicalText.slice(wordStart, wordEnd);
-  const ctxStart = Math.max(0, charIndex - 20);
-  const ctxEnd = Math.min(index.canonicalText.length, charIndex + 20);
-  const context = index.canonicalText.slice(ctxStart, ctxEnd);
   const ranges = buildDomRangesFromCanonicalRange(index, wordStart, wordEnd);
-  console.group(`[OD-dblclick] "${selectedWord}" (canonical [${wordStart}..${wordEnd}])`);
-  console.log(
-    `charIndex=${charIndex} char="${index.canonicalText[charIndex]}"` +
-    ` | token=${token ? `"${token.text}"[${token.start}..${token.end}]` : "null"}` +
-    ` | bounds=[${bounds.start}..${bounds.end}]` +
-    ` | final=[${wordStart}..${wordEnd}] "${selectedWord}"` +
-    ` | context="${context}"`
-  );
-  console.log(`${ranges.length} DOM range entries from buildDomRangesFromCanonicalRange:`);
-  for (let i = 0; i < ranges.length; i++) {
-    const r = ranges[i];
-    const fullNodeText = r.node?.textContent || "";
-    const slicedText = fullNodeText.slice(r.startOffset, r.endOffset);
-    const parentTag = r.node?.parentElement?.tagName || "?";
-    const parentClass = r.node?.parentElement?.className || "";
-    const fontWeight = r.node?.parentElement ? getComputedStyle(r.node.parentElement).fontWeight : "?";
-    console.log(
-      `  range[${i}]: sliced="${slicedText}" | node.textContent="${fullNodeText}" | offsets=[${r.startOffset}..${r.endOffset}]` +
-      ` | parent=<${parentTag} class="${parentClass}"> fontWeight=${fontWeight}`
-    );
-  }
-  // Also log the chars in the canonical range to see which nodes they reference
-  console.log(`Canonical chars [${wordStart}..${wordEnd}]:`);
-  for (let ci = wordStart; ci < wordEnd && ci < index.chars.length; ci++) {
-    const ch = index.chars[ci];
-    const nodeSnippet = ch.node ? (ch.node.textContent || "").slice(0, 30) : "NULL";
-    console.log(
-      `  char[${ci}]: "${ch.canonicalChar}" synthetic=${ch.synthetic} node="${nodeSnippet}" rawOffset=${ch.rawOffset} rawEndOffset=${ch.rawEndOffset}`
-    );
-  }
-  console.groupEnd();
-  // --- END DEBUG ---
+  console.log(`[OD-dblclick] "${selectedWord}" [${wordStart}..${wordEnd}]`);
 
   const slot = pageSlots.get(pageNum);
   return selectDomRanges(ranges, slot?.wrapper || null);

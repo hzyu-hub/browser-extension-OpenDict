@@ -379,6 +379,19 @@ export function collectTextRunsFromTextLayer(textLayer) {
       });
     }
   }
+  // Sort runs by visual reading order: top-to-bottom, then left-to-right.
+  // DOM order may differ from visual order (e.g., RTL table cells, reordered
+  // spans), which causes incorrect gap calculations in shouldInsertSyntheticSpace.
+  runs.sort((a, b) => {
+    const ay = a.rect?.top ?? 0;
+    const by = b.rect?.top ?? 0;
+    const lineThreshold = Math.min(a.rect?.height ?? 10, b.rect?.height ?? 10) * 0.5;
+    if (Math.abs(ay - by) < lineThreshold) {
+      return (a.rect?.left ?? 0) - (b.rect?.left ?? 0);
+    }
+    return ay - by;
+  });
+
   return runs;
 }
 
