@@ -411,3 +411,51 @@ test("skip-table handles mixed whitespace types", () => {
   assert.equal(table[1], 2); // 'b' at position 2
   assert.equal(table[2], 4); // 'c' at position 4
 });
+
+// --- T27: tokenization v2 + hyphen-join edge-case tests ---
+
+test("buildTokens v2: CJK + Latin boundary", () => {
+  const tokens = buildTokens("\u4e2d\u6587abc\u65e5\u672c", { v2: true });
+  assert.equal(tokens.length, 5); // 中, 文, abc, 日, 本
+  const texts = tokens.map(t => t.text);
+  assert.ok(texts.includes("\u4e2d"));
+  assert.ok(texts.includes("\u6587"));
+  assert.ok(texts.includes("abc"));
+});
+
+test("buildTokens v2: number with version separator", () => {
+  const tokens = buildTokens("v2.0", { v2: true });
+  assert.equal(tokens.length, 1);
+  assert.equal(tokens[0].text, "v2.0");
+});
+
+test("buildTokens v2: date pattern", () => {
+  const tokens = buildTokens("2024-01-15", { v2: true });
+  const texts = tokens.map(t => t.text);
+  assert.ok(texts.includes("2024-01-15"));
+});
+
+test("applyHyphenJoinHeuristic merges en-dash split tokens", () => {
+  const tokens = [
+    { text: "trans", start: 0, end: 5 },
+    { text: "lation", start: 7, end: 12 },
+  ];
+  // en-dash U+2013 between tokens
+  const result = applyHyphenJoinHeuristic(tokens, "trans\u2013lation");
+  assert.equal(result.length, 1);
+  assert.equal(result[0].text, "translation");
+});
+
+test("applyHyphenJoinHeuristic does not merge space-only gap", () => {
+  const tokens = [
+    { text: "hello", start: 0, end: 5 },
+    { text: "world", start: 6, end: 11 },
+  ];
+  const result = applyHyphenJoinHeuristic(tokens, "hello world");
+  assert.equal(result.length, 2);
+});
+
+test("buildTokens v2: no tokens for punctuation-only input", () => {
+  const tokens = buildTokens("!!! ???", { v2: true });
+  assert.equal(tokens.length, 0);
+});
