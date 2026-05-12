@@ -585,6 +585,11 @@ function showSelectionOverlay(rangesOrRange, pageWrapper) {
   // Accept either a single Range or an array of Ranges
   const rangeList = Array.isArray(rangesOrRange) ? rangesOrRange : [rangesOrRange];
 
+  // --- DEBUG: overlay rects ---
+  let totalRects = 0;
+  const debugRanges = [];
+  // --- END DEBUG preamble ---
+
   const container = document.createElement("div");
   container.className = "od-selection-highlight";
   container.setAttribute("data-od", "");
@@ -595,6 +600,7 @@ function showSelectionOverlay(rangesOrRange, pageWrapper) {
     for (let i = 0; i < rects.length; i++) {
       const rect = rects[i];
       if (rect.width === 0 && rect.height === 0) continue;
+      totalRects++;
       const div = document.createElement("div");
       div.className = "od-selection-rect";
       div.style.left = `${rect.left - wrapperRect.left}px`;
@@ -603,7 +609,18 @@ function showSelectionOverlay(rangesOrRange, pageWrapper) {
       div.style.height = `${rect.height}px`;
       container.appendChild(div);
     }
+    debugRanges.push({
+      text: range.toString().slice(0, 50),
+      rectCount: rects.length,
+    });
   }
+
+  // --- DEBUG: overlay summary ---
+  console.log(
+    `[OD-overlay] ${rangeList.length} range(s), ${totalRects} rect(s) drawn`,
+    debugRanges
+  );
+  // --- END DEBUG ---
 
   if (container.children.length > 0) {
     const textLayer = pageWrapper.querySelector(".textLayer");
@@ -627,22 +644,51 @@ function selectWordAtPoint(clientX, clientY, target = null) {
   const charIndex = findCharIndexAtPoint(index, clientX, clientY);
   if (charIndex < 0) return false;
 
-  // Try token-based selection first (respects tokenizer rules)
+  // Always compute expandToWordBoundaries — it respects letter↔digit splits
+  const bounds = expandToWordBoundaries(index.canonicalText, charIndex);
+  if (!bounds) return false;
+
+  // Try token-based selection (respects tokenizer rules like hyphenation)
   const token = findTokenContaining(index, charIndex);
   let wordStart, wordEnd;
   if (token) {
-    wordStart = token.start;
-    wordEnd = token.end;
+    // Intersect: use the narrower of token vs expandToWordBoundaries.
+    // This ensures letter↔digit boundaries (e.g. "Student" vs "0472792")
+    // are respected even when the tokenizer merges them into one token.
+    wordStart = Math.max(token.start, bounds.start);
+    wordEnd = Math.min(token.end, bounds.end);
+    if (wordStart >= wordEnd) {
+      // Intersection empty — fall back to expandToWordBoundaries
+      wordStart = bounds.start;
+      wordEnd = bounds.end;
+    }
   } else {
-    // Fallback: expand to word boundaries from the clicked char
-    const bounds = expandToWordBoundaries(index.canonicalText, charIndex);
-    if (!bounds) return false;
     wordStart = bounds.start;
     wordEnd = bounds.end;
   }
 
-  const slot = pageSlots.get(pageNum);
+  // --- DEBUG: double-click word selection ---
+  const selectedWord = index.canonicalText.slice(wordStart, wordEnd);
+  const ctxStart = Math.max(0, charIndex - 20);
+  const ctxEnd = Math.min(index.canonicalText.length, charIndex + 20);
+  const context = index.canonicalText.slice(ctxStart, ctxEnd);
   const ranges = buildDomRangesFromCanonicalRange(index, wordStart, wordEnd);
+  console.log(
+    `[OD-dblclick] charIndex=${charIndex} char="${index.canonicalText[charIndex]}"` +
+    ` | token=${token ? `"${token.text}"[${token.start}..${token.end}]` : "null"}` +
+    ` | bounds=[${bounds.start}..${bounds.end}]` +
+    ` | final=[${wordStart}..${wordEnd}] "${selectedWord}"` +
+    ` | context="${context}"` +
+    ` | ${ranges.length} DOM range(s)`
+  );
+  for (let i = 0; i < ranges.length; i++) {
+    const r = ranges[i];
+    const nodeText = (r.node?.textContent || "").slice(0, 50);
+    console.log(`  range[${i}]: node="${nodeText}" [${r.startOffset}..${r.endOffset}]`);
+  }
+  // --- END DEBUG ---
+
+  const slot = pageSlots.get(pageNum);
   return selectDomRanges(ranges, slot?.wrapper || null);
 }
 
