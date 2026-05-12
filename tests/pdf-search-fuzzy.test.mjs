@@ -61,3 +61,25 @@ test("fuzzySearch handles 1-char substitution", () => {
   const best = results.reduce((a, b) => a.editDistance < b.editDistance ? a : b);
   assert.equal(best.editDistance, 1);
 });
+
+// --- T25: Myers matcher edge-case tests ---
+
+test("fuzzySearch finds match with 1 insertion", () => {
+  const results = fuzzySearch("effect", "effiect", 1);
+  assert.ok(results.length >= 1);
+  assert.ok(results[0].editDistance <= 1);
+});
+
+test("fuzzyScore is 0.8 for 1-edit in 5-char query", () => {
+  assert.equal(fuzzyScore(1, 5), 0.8);
+});
+
+test("fuzzySearch returns empty for maxDist=0 and no exact match", () => {
+  const results = fuzzySearch("hello", "hallo", 0);
+  assert.equal(results.length, 0);
+});
+
+test("fuzzySearch finds multiple matches in long text", () => {
+  const results = fuzzySearch("hello hallo hxllo", "hello", 1);
+  assert.ok(results.length >= 2);
+});
