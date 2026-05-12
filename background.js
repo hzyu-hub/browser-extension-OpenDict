@@ -478,9 +478,11 @@ async function translateWithAI(text, context, config) {
     prompt = `You are a concise ${targetLangName} monolingual dictionary.
 ${sourceClause} ${contextInstruction}
 
+CRITICAL RULE: If you determine that "${text}" is already a ${targetLangName} word, the "word" field in your output MUST be exactly "${text}" (lemma/case normalization is allowed, e.g. "running"→"run", but NEVER substitute a synonym or related word). "Translate" below means cross-language translation ONLY — it does NOT mean finding a synonym within the same language.
+
 Step 1: If the source language of "${text}" is NOT ${targetLangName}, translate it into the most natural single-word ${targetLangName} equivalent in context. Step 2: Provide a ${targetLangName} dictionary entry for that ${targetLangName} word.
 
-If the source language IS already ${targetLangName}, skip step 1 — produce the entry for "${text}" itself.
+If the source language IS already ${targetLangName}, skip step 1 entirely — produce the dictionary entry for "${text}" itself (do NOT replace it with a synonym).
 
 Return JSON with these keys:
 - "word": The ${targetLangName} headword. If source≠target, this MUST be the ${targetLangName} translation, not the original input. If source=target, this MUST be exactly the original input "${text}" (case/lemma may be normalized). NEVER put IPA, pinyin, romaji, or any pronunciation notation into "word" — that goes in "phonetic". For Japanese, prefer kanji + okurigana, or katakana for loanwords (e.g., Microsoft → マイクロソフト).
