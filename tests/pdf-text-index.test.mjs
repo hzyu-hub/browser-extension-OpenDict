@@ -10,6 +10,7 @@ import {
   isCombiningMark,
   resolveCanonicalToRaw,
   buildWhitespaceSkipTable,
+  findMatchesWhitespaceTolerant,
 } from "../pdf-text-index-core.mjs";
 
 function run(text, left, right, top = 0, bottom = 10) {
@@ -240,4 +241,28 @@ test("skip-table handles trailing whitespace", () => {
   const table = buildWhitespaceSkipTable("abc ");
   assert.equal(table.length, 3);
   assert.equal(table[2], 2); // 'c' at canonical index 2
+});
+
+test("findMatchesWhitespaceTolerant matches text ignoring whitespace gaps", () => {
+  const index = buildTextIndexFromRuns([
+    run("ef", 0, 20),
+    run("fect", 30, 70),
+  ]);
+  const matches = findMatchesWhitespaceTolerant(index, "effect");
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].type, "whitespace");
+});
+
+test("findMatchesWhitespaceTolerant returns empty for no matches", () => {
+  const index = buildTextIndexFromRuns([run("hello world", 0, 100)]);
+  const matches = findMatchesWhitespaceTolerant(index, "xyz");
+  assert.equal(matches.length, 0);
+});
+
+test("whitespace-tolerant resolves correct canonical offsets", () => {
+  const index = buildTextIndexFromRuns([run("ef fect", 0, 70)]);
+  const matches = findMatchesWhitespaceTolerant(index, "effect");
+  assert.equal(matches.length, 1);
+  assert.ok(matches[0].start >= 0);
+  assert.ok(matches[0].end > matches[0].start);
 });

@@ -328,6 +328,38 @@ export function buildWhitespaceSkipTable(canonicalText) {
   return table;
 }
 
+export function findMatchesWhitespaceTolerant(index, query) {
+  const needle = normalizeSearchQuery(query);
+  if (!index || !needle) return [];
+  const strippedNeedle = needle.replace(/\s+/g, "");
+  if (!strippedNeedle) return [];
+  if (!index._wsSkipTable) {
+    index._wsSkipTable = buildWhitespaceSkipTable(index.canonicalText);
+  }
+  const strippedHaystack = index.canonicalText.replace(/\s+/g, "");
+  const skipTable = index._wsSkipTable;
+  const matches = [];
+  let from = 0;
+  while (from <= strippedHaystack.length - strippedNeedle.length) {
+    const strippedStart = strippedHaystack.indexOf(strippedNeedle, from);
+    if (strippedStart < 0) break;
+    const strippedEnd = strippedStart + strippedNeedle.length;
+    const canonicalStart = skipTable[strippedStart];
+    const canonicalEnd =
+      strippedEnd > 0 && strippedEnd - 1 < skipTable.length
+        ? skipTable[strippedEnd - 1] + 1
+        : index.canonicalText.length;
+    matches.push({
+      start: canonicalStart,
+      end: canonicalEnd,
+      type: "whitespace",
+      ranges: buildDomRangesFromCanonicalRange(index, canonicalStart, canonicalEnd),
+    });
+    from = strippedEnd;
+  }
+  return matches;
+}
+
 export function findMatchesInIndex(index, query) {
   const needle = normalizeSearchQuery(query);
   if (!index || !needle) return [];
