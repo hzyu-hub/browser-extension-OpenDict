@@ -157,6 +157,7 @@ export function buildTextIndexFromRuns(runs, options = {}) {
  canonicalRawMap.push(0xFFFFFFFF);
  }
 
+ const nodeOffset = run._nodeOffset || 0;
  for (let rawOffset = 0; rawOffset < text.length; ) {
  const cp = text.codePointAt(rawOffset);
  const rawChar = String.fromCodePoint(cp);
@@ -175,8 +176,8 @@ export function buildTextIndexFromRuns(runs, options = {}) {
  rawChar,
  canonicalChar,
  node: run.node || null,
- rawOffset,
- rawEndOffset: rawOffset + rawCharLen,
+ rawOffset: rawOffset + nodeOffset,
+ rawEndOffset: rawOffset + rawCharLen + nodeOffset,
  rect: charRectForRun(run, rawOffset, normalized.length),
  synthetic: false,
  });
@@ -243,18 +244,121 @@ export function collectTextRunsFromTextLayer(textLayer) {
     if (!rect || (rect.width === 0 && rect.height === 0)) {
       rect = node.parentElement?.getBoundingClientRect?.() || null;
     }
-    // Store rect relative to the textLayer wrapper so it doesn't go stale on scroll
-    if (rect) {
-      rect = {
-        left: rect.left - wrapperRect.left,
-        right: rect.right - wrapperRect.left,
-        top: rect.top - wrapperRect.top,
-        bottom: rect.bottom - wrapperRect.top,
-        width: rect.width,
-        height: rect.height,
-      };
+    if (!rect) {
+      runs.push({ text, node, rect: null });
+      continue;
     }
-    runs.push({ text, node, rect });
+
+    // Detect multi-line text nodes: if the rect height is much taller than
+    // a single line (estimated from the parent's font size), split into
+    // per-line sub-runs using per-character Range measurements.
+    let estimatedLineHeight = rect.height;
+    try {
+      const fontSize = parseFloat(
+        getComputedStyle(node.parentElement).fontSize || "12"
+      );
+      estimatedLineHeight = fontSize * 1.4;
+    } catch {}
+
+    const isMultiLine = rect.height > estimatedLineHeight * 1.4;
+
+    if (!isMultiLine) {
+      // Single-line fast path — store wrapper-relative rect as before
+      runs.push({
+        text,
+        node,
+        rect: {
+          left: rect.left - wrapperRect.left,
+          right: rect.right - wrapperRect.left,
+          top: rect.top - wrapperRect.top,
+          bottom: rect.bottom - wrapperRect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+      });
+      continue;
+    }
+
+    // Multi-line: measure each character's rect and group by line
+    const charRects = [];
+    const range = document.createRange();
+    for (let i = 0; i < text.length; i++) {
+      try {
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        const cr = range.getBoundingClientRect();
+        charRects.push({
+          index: i,
+          top: cr.top - wrapperRect.top,
+          bottom: cr.bottom - wrapperRect.top,
+          left: cr.left - wrapperRect.left,
+          right: cr.right - wrapperRect.left,
+          width: cr.width,
+          height: cr.height,
+        });
+      } catch {
+        // Fallback: use the whole-node rect for this char
+        charRects.push({
+          index: i,
+          top: rect.top - wrapperRect.top,
+          bottom: rect.bottom - wrapperRect.top,
+          left: rect.left - wrapperRect.left,
+          right: rect.right - wrapperRect.left,
+          width: rect.width / text.length,
+          height: rect.height,
+        });
+      }
+    }
+    range.detach?.();
+
+    // Group consecutive characters that share the same visual line
+    // (midpoints within 65% of line height of each other)
+    const groups = [];
+    let currentGroup = [charRects[0]];
+    for (let i = 1; i < charRects.length; i++) {
+      const prev = currentGroup[currentGroup.length - 1];
+      const curr = charRects[i];
+      const prevMid = (prev.top + prev.bottom) / 2;
+      const currMid = (curr.top + curr.bottom) / 2;
+      const h = Math.max(prev.height, curr.height, 1);
+      if (Math.abs(currMid - prevMid) <= h * 0.65) {
+        currentGroup.push(curr);
+      } else {
+        groups.push(currentGroup);
+        currentGroup = [curr];
+      }
+    }
+    if (currentGroup.length) groups.push(currentGroup);
+
+    // Emit one run per line-group
+    for (const group of groups) {
+      const startIdx = group[0].index;
+      const endIdx = group[group.length - 1].index + 1;
+      const subText = text.slice(startIdx, endIdx);
+      // Compute bounding rect for this line group
+      let gLeft = Infinity, gRight = -Infinity, gTop = Infinity, gBottom = -Infinity;
+      for (const cr of group) {
+        if (cr.left < gLeft) gLeft = cr.left;
+        if (cr.right > gRight) gRight = cr.right;
+        if (cr.top < gTop) gTop = cr.top;
+        if (cr.bottom > gBottom) gBottom = cr.bottom;
+      }
+      runs.push({
+        text: subText,
+        node,
+        rect: {
+          left: gLeft,
+          right: gRight,
+          top: gTop,
+          bottom: gBottom,
+          width: gRight - gLeft,
+          height: gBottom - gTop,
+        },
+        // Store the raw offset within the text node so charRectForRun
+        // uniform division still works correctly for this sub-run
+        _nodeOffset: startIdx,
+      });
+    }
   }
   return runs;
 }

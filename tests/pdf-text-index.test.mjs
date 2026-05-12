@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildTextIndexFromRuns,
   buildDomRangesFromCanonicalRange,
+  expandToWordBoundaries,
   findCharIndexAtPoint,
   findMatchesInIndex,
   findTokenContaining,
@@ -458,4 +459,146 @@ test("applyHyphenJoinHeuristic does not merge space-only gap", () => {
 test("buildTokens v2: no tokens for punctuation-only input", () => {
   const tokens = buildTokens("!!! ???", { v2: true });
   assert.equal(tokens.length, 0);
+});
+
+// --- expandToWordBoundaries tests ---
+
+test("expandToWordBoundaries: basic Latin word", () => {
+  const text = "hello world";
+  const result = expandToWordBoundaries(text, 2); // 'l' in "hello"
+  assert.deepEqual(result, { start: 0, end: 5 });
+});
+
+test("expandToWordBoundaries: second word", () => {
+  const text = "hello world";
+  const result = expandToWordBoundaries(text, 7); // 'r' in "world"
+  assert.deepEqual(result, { start: 6, end: 11 });
+});
+
+test("expandToWordBoundaries: stops at punctuation", () => {
+  const text = "foo,bar";
+  assert.deepEqual(expandToWordBoundaries(text, 1), { start: 0, end: 3 }); // "foo"
+  assert.deepEqual(expandToWordBoundaries(text, 5), { start: 4, end: 7 }); // "bar"
+});
+
+test("expandToWordBoundaries: clicking on punctuation returns null", () => {
+  const text = "foo,bar";
+  assert.equal(expandToWordBoundaries(text, 3), null); // the comma
+});
+
+test("expandToWordBoundaries: whitespace returns null", () => {
+  const text = "hello world";
+  assert.equal(expandToWordBoundaries(text, 5), null); // the space
+});
+
+test("expandToWordBoundaries: CJK character is single-char word", () => {
+  const text = "hello世界test";
+  // '世' at index 5
+  assert.deepEqual(expandToWordBoundaries(text, 5), { start: 5, end: 6 });
+  // '界' at index 6
+  assert.deepEqual(expandToWordBoundaries(text, 6), { start: 6, end: 7 });
+});
+
+test("expandToWordBoundaries: does not expand Latin across CJK", () => {
+  const text = "abc中def";
+  assert.deepEqual(expandToWordBoundaries(text, 0), { start: 0, end: 3 }); // "abc"
+  assert.deepEqual(expandToWordBoundaries(text, 4), { start: 4, end: 7 }); // "def"
+});
+
+test("expandToWordBoundaries: handles start of string", () => {
+  const text = "word";
+  assert.deepEqual(expandToWordBoundaries(text, 0), { start: 0, end: 4 });
+});
+
+test("expandToWordBoundaries: handles end of string", () => {
+  const text = "word";
+  assert.deepEqual(expandToWordBoundaries(text, 3), { start: 0, end: 4 });
+});
+
+test("expandToWordBoundaries: out of range returns null", () => {
+  assert.equal(expandToWordBoundaries("hello", -1), null);
+  assert.equal(expandToWordBoundaries("hello", 10), null);
+  assert.equal(expandToWordBoundaries("", 0), null);
+  assert.equal(expandToWordBoundaries(null, 0), null);
+});
+
+test("expandToWordBoundaries: digits are part of word", () => {
+  const text = "abc123 xyz";
+  assert.deepEqual(expandToWordBoundaries(text, 4), { start: 0, end: 6 }); // "abc123"
+});
+
+test("expandToWordBoundaries: multiple punctuation boundaries", () => {
+  const text = "(hello)";
+  assert.deepEqual(expandToWordBoundaries(text, 3), { start: 1, end: 6 }); // "hello"
+});
+
+test("expandToWordBoundaries: Hiragana is CJK single-char", () => {
+  const text = "あいう";
+  assert.deepEqual(expandToWordBoundaries(text, 0), { start: 0, end: 1 });
+  assert.deepEqual(expandToWordBoundaries(text, 1), { start: 1, end: 2 });
+});
+
+test("expandToWordBoundaries: Hangul is CJK single-char", () => {
+  const text = "한글test";
+  assert.deepEqual(expandToWordBoundaries(text, 0), { start: 0, end: 1 }); // '한'
+  assert.deepEqual(expandToWordBoundaries(text, 1), { start: 1, end: 2 }); // '글'
+  assert.deepEqual(expandToWordBoundaries(text, 2), { start: 2, end: 6 }); // "test"
+});
+
+// --- Multi-line text node split (cross-line char rect bug fix) ---
+
+test("split multi-line runs: findCharIndexAtPoint selects line 2 char, not line 1", () => {
+  // Simulate a text node "reasoning\nover" that was split into two sub-runs
+  // by collectTextRunsFromTextLayer (one per visual line).
+  const sharedNode = { text: "reasoning\nover" };
+  const line1Run = {
+    text: "reasoning\n",
+    node: sharedNode,
+    rect: { left: 0, right: 90, top: 0, bottom: 10, width: 90, height: 10 },
+    _nodeOffset: 0,
+  };
+  const line2Run = {
+    text: "over",
+    node: sharedNode,
+    rect: { left: 0, right: 40, top: 12, bottom: 22, width: 40, height: 10 },
+    _nodeOffset: 10, // "reasoning\n" is 10 chars
+  };
+  const index = buildTextIndexFromRuns([line1Run, line2Run]);
+
+  // Click in the middle of line 2 (y=17 is vertically centered in line 2's rect)
+  const charIdx = findCharIndexAtPoint(index, 15, 17);
+  assert.ok(charIdx >= 0, "should find a char on line 2");
+  // The canonical text for line 2 starts after "reasoning " (normalized)
+  const clickedChar = index.chars[charIdx];
+  assert.ok(
+    clickedChar.rect.top >= 12,
+    `clicked char should be on line 2 (top=${clickedChar.rect.top})`
+  );
+});
+
+test("split multi-line runs: DOM ranges use correct node offsets", () => {
+  // Same setup: "reasoning\nover" split into two sub-runs
+  const sharedNode = { text: "reasoning\nover" };
+  const line1Run = {
+    text: "reasoning\n",
+    node: sharedNode,
+    rect: { left: 0, right: 100, top: 0, bottom: 10, width: 100, height: 10 },
+    _nodeOffset: 0,
+  };
+  const line2Run = {
+    text: "over",
+    node: sharedNode,
+    rect: { left: 0, right: 40, top: 12, bottom: 22, width: 40, height: 10 },
+    _nodeOffset: 10,
+  };
+  const index = buildTextIndexFromRuns([line1Run, line2Run]);
+
+  // Find "over" in the canonical text
+  const matches = findMatchesInIndex(index, "over");
+  assert.equal(matches.length, 1);
+  // The DOM range for "over" should reference offsets 10-14 in the original node
+  const range = matches[0].ranges[0];
+  assert.equal(range.node, sharedNode);
+  assert.equal(range.startOffset, 10, "startOffset should be 10 (after 'reasoning\\n')");
+  assert.equal(range.endOffset, 14, "endOffset should be 14");
 });
