@@ -685,3 +685,63 @@ test("split multi-line runs: DOM ranges use correct node offsets", () => {
   assert.equal(range.startOffset, 10, "startOffset should be 10 (after 'reasoning\\n')");
   assert.equal(range.endOffset, 14, "endOffset should be 14");
 });
+
+test("mixed-styling word: bold 'A' + regular 'dvantage' forms single token", () => {
+  // Simulates a PDF where 'Advantage' is split across two spans with different
+  // font styles but no horizontal gap (same line, adjacent rects).
+  const nodeA = { text: "A" };
+  const nodeB = { text: "dvantage" };
+  const runA = {
+    text: "A",
+    node: nodeA,
+    rect: { left: 0, right: 8, top: 0, bottom: 12, width: 8, height: 12 },
+  };
+  const runB = {
+    text: "dvantage",
+    node: nodeB,
+    rect: { left: 8, right: 60, top: 0, bottom: 12, width: 52, height: 12 },
+  };
+  const index = buildTextIndexFromRuns([runA, runB]);
+
+  // normalizeRawChar lowercases — canonical text is "advantage"
+  assert.equal(index.canonicalText, "advantage",
+    "runs with no gap on same line should merge without synthetic space");
+
+  // Should be a single token
+  const token = findTokenContaining(index, 0);
+  assert.ok(token, "should find a token at position 0");
+  assert.equal(index.canonicalText.slice(token.start, token.end), "advantage",
+    "token should span the full word");
+
+  // buildDomRangesFromCanonicalRange should return two ranges (one per node)
+  const ranges = buildDomRangesFromCanonicalRange(index, token.start, token.end);
+  assert.equal(ranges.length, 2, "should produce two DOM ranges for two nodes");
+  assert.equal(ranges[0].node, nodeA);
+  assert.equal(ranges[0].startOffset, 0);
+  assert.equal(ranges[0].endOffset, 1);
+  assert.equal(ranges[1].node, nodeB);
+  assert.equal(ranges[1].startOffset, 0);
+  assert.equal(ranges[1].endOffset, 8);
+});
+
+test("mixed-styling word: small gap due to font metrics does not split", () => {
+  // Even with a tiny gap (e.g., 2px on a 12px-high line), the threshold
+  // (gap > h * 0.45 = 5.4) should NOT trigger a synthetic space.
+  const nodeA = { text: "A" };
+  const nodeB = { text: "dvantage" };
+  const runA = {
+    text: "A",
+    node: nodeA,
+    rect: { left: 0, right: 8, top: 0, bottom: 12, width: 8, height: 12 },
+  };
+  const runB = {
+    text: "dvantage",
+    node: nodeB,
+    rect: { left: 10, right: 62, top: 0, bottom: 12, width: 52, height: 12 },
+  };
+  const index = buildTextIndexFromRuns([runA, runB]);
+
+  // Gap is 2px, threshold is 12*0.45=5.4 — no space inserted
+  assert.equal(index.canonicalText, "advantage",
+    "small gap (2px) should not trigger synthetic space on 12px line");
+});

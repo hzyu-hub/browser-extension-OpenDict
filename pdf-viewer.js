@@ -533,14 +533,14 @@ function findPageNumAtPoint(clientX, clientY, target = null) {
 function selectDomRanges(ranges) {
  if (!ranges || ranges.length === 0) return false;
  const first = ranges[0];
+ const last = ranges[ranges.length - 1];
  const sel = window.getSelection();
  if (!sel) return false;
 
- // Use only the first range to avoid over-selecting across non-contiguous nodes
  const range = document.createRange();
  try {
  range.setStart(first.node, first.startOffset);
- range.setEnd(first.node, first.endOffset);
+ range.setEnd(last.node, last.endOffset);
  } catch {
  return false;
  }
