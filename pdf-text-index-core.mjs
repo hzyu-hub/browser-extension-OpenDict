@@ -112,70 +112,106 @@ function pushCanonicalChar(index, entry) {
   index.canonicalText += entry.canonicalChar;
 }
 
-export function buildTextIndexFromRuns(runs) {
-  const index = {
-    canonicalText: "",
-    chars: [],
-    tokens: [],
-  };
+export function buildTextIndexFromRuns(runs, options = {}) {
+ const index = {
+ canonicalText: "",
+ chars: [],
+ tokens: [],
+ reverseOffsets: null,
+ forwardOffsets: null,
+ };
 
-  let prevRun = null;
-  for (const run of runs || []) {
-    const text = String(run?.text || "");
-    if (!text) continue;
+ const canonicalRawMap = [];
+ let globalRawPos = 0;
 
-    if (
-      prevRun &&
-      shouldInsertSyntheticSpace(prevRun, run) &&
-      !index.canonicalText.endsWith(" ") &&
-      !isWhitespace(text[0])
-    ) {
-      pushCanonicalChar(index, {
-        rawChar: "",
-        canonicalChar: " ",
-        node: null,
-        rawOffset: -1,
-        rawEndOffset: -1,
-        rect: null,
-        synthetic: true,
-      });
-    }
+ let prevRun = null;
+ for (const run of runs || []) {
+ const text = String(run?.text || "");
+ if (!text) continue;
 
-    for (let rawOffset = 0; rawOffset < text.length; rawOffset++) {
-      const rawChar = text[rawOffset];
-      let normalized = normalizeRawChar(rawChar);
-      if (!normalized) continue;
-      if (isWhitespace(normalized)) normalized = " ";
+ if (
+ prevRun &&
+ shouldInsertSyntheticSpace(prevRun, run) &&
+ !index.canonicalText.endsWith(" ") &&
+ !isWhitespace(text[0])
+ ) {
+ pushCanonicalChar(index, {
+ rawChar: "",
+ canonicalChar: " ",
+ node: null,
+ rawOffset: -1,
+ rawEndOffset: -1,
+ rect: null,
+ synthetic: true,
+ });
+ canonicalRawMap.push(0xFFFFFFFF);
+ }
 
-      for (const canonicalChar of normalized) {
-        if (canonicalChar === " " && index.canonicalText.endsWith(" ")) continue;
-        pushCanonicalChar(index, {
-          rawChar,
-          canonicalChar,
-          node: run.node || null,
-          rawOffset,
-          rawEndOffset: rawOffset + 1,
-          rect: charRectForRun(run, rawOffset, normalized.length),
-          synthetic: false,
-        });
-      }
-    }
-    prevRun = run;
-  }
+ for (let rawOffset = 0; rawOffset < text.length; ) {
+ const cp = text.codePointAt(rawOffset);
+ const rawChar = String.fromCodePoint(cp);
+ const rawCharLen = rawChar.length;
+ let normalized = normalizeRawChar(rawChar);
+ if (!normalized) {
+ globalRawPos += rawCharLen;
+ rawOffset += rawCharLen;
+ continue;
+ }
+ if (isWhitespace(normalized)) normalized = " ";
 
-  // Mirror query normalization: no leading/trailing search spaces.
-  while (index.chars.length && index.chars[0].canonicalChar === " ") {
-    index.chars.shift();
-  }
-  while (index.chars.length && index.chars[index.chars.length - 1].canonicalChar === " ") {
-    index.chars.pop();
-  }
-  index.canonicalText = index.chars.map((c, i) => {
-    c.canonicalIndex = i;
-    return c.canonicalChar;
-  }).join("");
-  index.tokens = buildTokens(index.canonicalText);
-  return index;
+ for (const canonicalChar of normalized) {
+ if (canonicalChar === " " && index.canonicalText.endsWith(" ")) continue;
+ pushCanonicalChar(index, {
+ rawChar,
+ canonicalChar,
+ node: run.node || null,
+ rawOffset,
+ rawEndOffset: rawOffset + rawCharLen,
+ rect: charRectForRun(run, rawOffset, normalized.length),
+ synthetic: false,
+ });
+ canonicalRawMap.push(globalRawPos);
+ }
+ globalRawPos += rawCharLen;
+ rawOffset += rawCharLen;
+ }
+ prevRun = run;
+ }
+
+ // Mirror query normalization: no leading/trailing search spaces.
+ while (index.chars.length && index.chars[0].canonicalChar === " ") {
+ index.chars.shift();
+ canonicalRawMap.shift();
+ }
+ while (index.chars.length && index.chars[index.chars.length - 1].canonicalChar === " ") {
+ index.chars.pop();
+ canonicalRawMap.pop();
+ }
+ index.canonicalText = index.chars.map((c, i) => {
+ c.canonicalIndex = i;
+ return c.canonicalChar;
+ }).join("");
+ index.tokens = buildTokens(index.canonicalText);
+
+ // Build reverseOffsets: canonicalIdx → globalRawPos
+ index.reverseOffsets = new Uint32Array(index.chars.length);
+ for (let i = 0; i < index.chars.length; i++) {
+ index.reverseOffsets[i] = canonicalRawMap[i];
+ }
+
+ // Build forwardOffsets: globalRawPos → canonicalIdx (0xFFFFFFFF for synthetic/unused)
+ if (globalRawPos > 0) {
+ index.forwardOffsets = new Uint32Array(globalRawPos).fill(0xFFFFFFFF);
+ for (let ci = 0; ci < index.chars.length; ci++) {
+ if (!index.chars[ci].synthetic) {
+ index.forwardOffsets[index.reverseOffsets[ci]] = ci;
+ }
+ }
+ } else {
+ index.forwardOffsets = new Uint32Array(0);
+ }
+
+ return index;
 }
 
 export function collectTextRunsFromTextLayer(textLayer) {
@@ -201,8 +237,8 @@ export function collectTextRunsFromTextLayer(textLayer) {
   return runs;
 }
 
-export function buildTextIndexFromTextLayer(textLayer) {
-  return buildTextIndexFromRuns(collectTextRunsFromTextLayer(textLayer));
+export function buildTextIndexFromTextLayer(textLayer, options = {}) {
+ return buildTextIndexFromRuns(collectTextRunsFromTextLayer(textLayer), options);
 }
 
 export function buildTokens(canonicalText) {

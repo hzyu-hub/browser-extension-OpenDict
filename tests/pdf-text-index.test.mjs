@@ -140,10 +140,46 @@ test("normalizeCoarseText returns both joined and spaced versions", () => {
 });
 
 test("isCombiningMark detects combining diacritical marks", () => {
-  assert.ok(isCombiningMark(0x0301)); // COMBINING ACUTE ACCENT
-  assert.ok(isCombiningMark(0x0300)); // COMBINING GRAVE ACCENT
-  assert.ok(isCombiningMark(0x064B)); // Arabic fathatan
-  assert.ok(isCombiningMark(0x1DC0)); // Combining Diacritical Marks Supplement
-  assert.ok(!isCombiningMark(0x0041)); // LATIN CAPITAL LETTER A
-  assert.ok(!isCombiningMark(0x00E9)); // é (precomposed, not a combining mark)
+ assert.ok(isCombiningMark(0x0301)); // COMBINING ACUTE ACCENT
+ assert.ok(isCombiningMark(0x0300)); // COMBINING GRAVE ACCENT
+ assert.ok(isCombiningMark(0x064B)); // Arabic fathatan
+ assert.ok(isCombiningMark(0x1DC0)); // Combining Diacritical Marks Supplement
+ assert.ok(!isCombiningMark(0x0041)); // LATIN CAPITAL LETTER A
+ assert.ok(!isCombiningMark(0x00E9)); // é (precomposed, not a combining mark)
+});
+
+test("buildTextIndexFromRuns produces reverseOffsets mapping", () => {
+ const index = buildTextIndexFromRuns([run("abc", 0, 30)]);
+ assert.ok(index.reverseOffsets instanceof Uint32Array);
+ assert.equal(index.reverseOffsets.length, index.chars.length);
+ for (let i = 0; i < index.chars.length; i++) {
+  assert.equal(index.reverseOffsets[i], index.chars[i].rawOffset);
+ }
+});
+
+test("buildTextIndexFromRuns produces forwardOffsets mapping", () => {
+ const index = buildTextIndexFromRuns([run("abc", 0, 30)]);
+ assert.ok(index.forwardOffsets instanceof Uint32Array);
+ assert.equal(index.forwardOffsets[0], 0);
+ assert.equal(index.forwardOffsets[1], 1);
+ assert.equal(index.forwardOffsets[2], 2);
+});
+
+test("forwardOffsets uses 0xFFFFFFFF sentinel for synthetic positions", () => {
+ const index = buildTextIndexFromRuns([
+  run("ab", 0, 20),
+  run("cd", 40, 60), // gap triggers synthetic space
+ ]);
+ assert.ok(index.forwardOffsets instanceof Uint32Array);
+ assert.ok(index.forwardOffsets.length > 0);
+});
+
+test("code-point-aware iteration handles supplementary plane characters", () => {
+ const supplementary = String.fromCodePoint(0x20000);
+ const text = "a" + supplementary + "b";
+ const index = buildTextIndexFromRuns([run(text, 0, 60)]);
+ assert.equal(index.chars.length, 3);
+ assert.equal(index.canonicalText.charAt(0), "a");
+ assert.equal(index.canonicalText.codePointAt(1), 0x20000);
+ assert.equal(index.canonicalText.charAt(3), "b");
 });
