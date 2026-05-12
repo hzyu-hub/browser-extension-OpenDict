@@ -733,11 +733,24 @@ export function findCharIndexAtPoint(index, x, y, maxDistance = 8) {
     x = x - wr.left;
     y = y - wr.top;
   }
+  // Collect all chars whose rect contains the point — multiple rects can overlap
+  // vertically (descenders, line-height) across adjacent lines. Pick the one
+  // whose vertical center is closest to the click y.
+  let hitChar = null;
+  let hitVertDist = Infinity;
   let best = null;
   let bestDist = Infinity;
   for (const ch of index.chars) {
     if (!ch || ch.synthetic || !ch.rect) continue;
-    if (pointInRect(x, y, ch.rect)) return ch.canonicalIndex;
+    if (pointInRect(x, y, ch.rect)) {
+      const midY = (ch.rect.top + ch.rect.bottom) / 2;
+      const vd = Math.abs(y - midY);
+      if (vd < hitVertDist) {
+        hitVertDist = vd;
+        hitChar = ch;
+      }
+      continue;
+    }
     const midY = (ch.rect.top + ch.rect.bottom) / 2;
     const lineTolerance = Math.max(ch.rect.height || 1, 1) * 0.8;
     if (Math.abs(y - midY) > lineTolerance) continue;
@@ -747,5 +760,6 @@ export function findCharIndexAtPoint(index, x, y, maxDistance = 8) {
       bestDist = dist;
     }
   }
+  if (hitChar) return hitChar.canonicalIndex;
   return best && bestDist <= maxDistance ? best.canonicalIndex : -1;
 }
