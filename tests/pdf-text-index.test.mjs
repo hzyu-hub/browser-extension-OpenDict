@@ -8,6 +8,7 @@ import {
   normalizeSearchQuery,
   normalizeCoarseText,
   isCombiningMark,
+  resolveCanonicalToRaw,
 } from "../pdf-text-index-core.mjs";
 
 function run(text, left, right, top = 0, bottom = 10) {
@@ -182,12 +183,34 @@ test("NFKD normalization makes accented search accent-insensitive", () => {
   assert.equal(findMatchesInIndex(index, "r\u00e9sum\u00e9").length, 1);
 });
 
+test("normalizeSearchQuery pipeline order: NFKD then strip marks then lowercase", () => {
+  // İ (U+0130 Latin Capital Letter I With Dot Above)
+  // NFKD → I + combining dot above; strip marks → I; lowercase → i
+  const result = normalizeSearchQuery("\u0130stanbul");
+  assert.ok(result.startsWith("i"), `Expected 'i' prefix, got '${result}'`);
+});
+
 test("code-point-aware iteration handles supplementary plane characters", () => {
- const supplementary = String.fromCodePoint(0x20000);
- const text = "a" + supplementary + "b";
- const index = buildTextIndexFromRuns([run(text, 0, 60)]);
- assert.equal(index.chars.length, 3);
- assert.equal(index.canonicalText.charAt(0), "a");
- assert.equal(index.canonicalText.codePointAt(1), 0x20000);
- assert.equal(index.canonicalText.charAt(3), "b");
+  const supplementary = String.fromCodePoint(0x20000);
+  const text = "a" + supplementary + "b";
+  const index = buildTextIndexFromRuns([run(text, 0, 60)]);
+  assert.equal(index.chars.length, 3);
+  assert.equal(index.canonicalText.charAt(0), "a");
+  assert.equal(index.canonicalText.codePointAt(1), 0x20000);
+  assert.equal(index.canonicalText.charAt(3), "b");
+});
+
+test("resolveCanonicalToRaw returns raw offset for valid index", () => {
+  const index = buildTextIndexFromRuns([run("hello", 0, 50)]);
+  const raw = resolveCanonicalToRaw(index, 0);
+  assert.equal(raw, 0);
+  const raw4 = resolveCanonicalToRaw(index, 4);
+  assert.equal(raw4, 4);
+});
+
+test("resolveCanonicalToRaw returns -1 for out-of-bounds", () => {
+  const index = buildTextIndexFromRuns([run("hi", 0, 20)]);
+  assert.equal(resolveCanonicalToRaw(index, -1), -1);
+  assert.equal(resolveCanonicalToRaw(index, 99), -1);
+  assert.equal(resolveCanonicalToRaw(null, 0), -1);
 });

@@ -307,6 +307,11 @@ export function buildDomRangesFromCanonicalRange(index, start, end) {
   return ranges;
 }
 
+export function resolveCanonicalToRaw(index, canonicalIdx) {
+  if (!index || canonicalIdx < 0 || canonicalIdx >= index.reverseOffsets.length) return -1;
+  return index.reverseOffsets[canonicalIdx];
+}
+
 export function findMatchesInIndex(index, query) {
   const needle = normalizeSearchQuery(query);
   if (!index || !needle) return [];
