@@ -11,7 +11,9 @@ import {
   resolveCanonicalToRaw,
   buildWhitespaceSkipTable,
   findMatchesWhitespaceTolerant,
+  findMatchesFuzzy,
   buildTokens,
+  applyHyphenJoinHeuristic,
 } from "../pdf-text-index-core.mjs";
 
 function run(text, left, right, top = 0, bottom = 10) {
@@ -315,4 +317,37 @@ test("number-unit: pH7 is a letter-led compound", () => {
 test("buildTokens v2: pure whitespace returns empty", () => {
   const tokens = buildTokens(" ", { v2: true });
   assert.equal(tokens.length, 0);
+});
+
+test("applyHyphenJoinHeuristic merges hyphen-split tokens", () => {
+  const tokens = [
+    { text: "trans", start: 0, end: 5 },
+    { text: "lation", start: 6, end: 12 },
+  ];
+  const result = applyHyphenJoinHeuristic(tokens, "trans- lation");
+  // Should merge if the character between the two tokens looks like a hyphen-split
+  assert.equal(result.length, 1);
+  assert.equal(result[0].text, "translation");
+});
+
+test("applyHyphenJoinHeuristic does not merge non-hyphen tokens", () => {
+  const tokens = [
+    { text: "hello", start: 0, end: 5 },
+    { text: "world", start: 6, end: 11 },
+  ];
+  const result = applyHyphenJoinHeuristic(tokens, "hello world");
+  assert.equal(result.length, 2);
+});
+
+test("applyHyphenJoinHeuristic returns original tokens for empty input", () => {
+  const result = applyHyphenJoinHeuristic([], "");
+  assert.equal(result.length, 0);
+});
+
+test("findMatchesFuzzy finds approximate matches on stripped text", () => {
+  const index = buildTextIndexFromRuns([run("effect", 0, 60)]);
+  const matches = findMatchesFuzzy(index, "efect", 1);
+  assert.ok(matches.length >= 1);
+  assert.equal(matches[0].type, "approximate");
+  assert.ok(matches[0].score >= 0.8);
 });

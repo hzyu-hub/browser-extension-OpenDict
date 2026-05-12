@@ -1,6 +1,8 @@
 // OpenDict PDF text indexing helpers.
 // Shared by pdf-viewer.js and lightweight Node tests.
 
+import { fuzzySearch, fuzzyScore } from "./pdf-search-fuzzy.mjs";
+
 const SOFT_HYPHEN_RE = /\u00ad/g;
 const WHITESPACE_RE = /\s+/g;
 const MN_MC_RE = /\p{Mn}|\p{Mc}/gu;
@@ -362,6 +364,26 @@ export function buildTokens(canonicalText, options = {}) {
   return buildTokensLegacy(text);
 }
 
+export function applyHyphenJoinHeuristic(tokens, canonicalText) {
+  if (!tokens || tokens.length <= 1) return tokens || [];
+  if (!canonicalText) return tokens;
+  const result = [tokens[0]];
+  for (let i = 1; i < tokens.length; i++) {
+    const prev = result[result.length - 1];
+    const curr = tokens[i];
+    const gap = canonicalText.slice(prev.end, curr.start);
+    // Heuristic: if gap is a hyphen (possibly followed by whitespace/newline),
+    // merge the two tokens into one
+    if (/^[-\u2010\u2011\u2012\u2013\u2014\u2015]\s*$/.test(gap)) {
+      prev.text = prev.text + curr.text;
+      prev.end = curr.end;
+    } else {
+      result.push(curr);
+    }
+  }
+  return result;
+}
+
 export function findTokenContaining(index, canonicalIndex) {
   if (!index || canonicalIndex < 0) return null;
   return index.tokens.find((t) => t.start <= canonicalIndex && canonicalIndex < t.end) || null;
@@ -443,6 +465,36 @@ export function findMatchesWhitespaceTolerant(index, query) {
     from = strippedEnd;
   }
   return matches;
+}
+
+export function findMatchesFuzzy(index, query, maxEditDist, options = {}) {
+  if (options.fuzzy === false) return [];
+  const needle = normalizeSearchQuery(query);
+  if (!index || !needle || needle.length > 64) return [];
+  if (!index._wsSkipTable) {
+    index._wsSkipTable = buildWhitespaceSkipTable(index.canonicalText);
+  }
+  const strippedHaystack = index.canonicalText.replace(/\s+/g, "");
+  const strippedNeedle = needle.replace(/\s+/g, "");
+  const skipTable = index._wsSkipTable;
+  const results = fuzzySearch(strippedHaystack, strippedNeedle, maxEditDist);
+  return results
+    .filter(r => fuzzyScore(r.editDistance, strippedNeedle.length) >= 0.8)
+    .map(r => {
+      const canonicalStart = skipTable[r.start];
+      const canonicalEnd =
+        (r.end > 0 && r.end - 1 < skipTable.length)
+          ? skipTable[r.end - 1] + 1
+          : index.canonicalText.length;
+      return {
+        start: canonicalStart,
+        end: canonicalEnd,
+        editDistance: r.editDistance,
+        score: fuzzyScore(r.editDistance, strippedNeedle.length),
+        type: "approximate",
+        ranges: buildDomRangesFromCanonicalRange(index, canonicalStart, canonicalEnd),
+      };
+    });
 }
 
 export function findMatchesInIndex(index, query) {
