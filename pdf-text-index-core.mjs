@@ -94,7 +94,7 @@ function shouldInsertSyntheticSpace(prevRun, run) {
     );
     return verticalGap > h * 0.2;
   }
-  const gap = run.rect.left - prevRun.rect.right;
+  const gap = Math.max(0, run.rect.left - prevRun.rect.right);
   return gap > h * 0.45;
 }
 
@@ -397,14 +397,10 @@ export function buildDomRangesFromCanonicalRange(index, start, end) {
     const ch = index.chars[i];
     if (!ch || ch.synthetic || !ch.node) continue;
     const last = ranges[ranges.length - 1];
-    if (last && last.node === ch.node && ch.rawOffset <= last.endOffset) {
-      last.endOffset = Math.max(last.endOffset, ch.rawEndOffset);
-      continue;
-    }
-    if (last && last.node === ch.node && ch.rawOffset === last.endOffset) {
-      last.endOffset = ch.rawEndOffset;
-      continue;
-    }
+ if (last && last.node === ch.node && ch.rawOffset === last.endOffset) {
+ last.endOffset = ch.rawEndOffset;
+ continue;
+ }
     ranges.push({
       node: ch.node,
       startOffset: ch.rawOffset,
@@ -440,12 +436,13 @@ export function findMatchesWhitespaceTolerant(index, query) {
   if (!index || !needle) return [];
   const strippedNeedle = needle.replace(/\s+/g, "");
   if (!strippedNeedle) return [];
-  if (!index._wsSkipTable) {
-    index._wsSkipTable = buildWhitespaceSkipTable(index.canonicalText);
-  }
-  const strippedHaystack = index.canonicalText.replace(/\s+/g, "");
-  const skipTable = index._wsSkipTable;
-  const matches = [];
+ if (!index._wsSkipTable) {
+ index._wsSkipTable = buildWhitespaceSkipTable(index.canonicalText);
+ index._strippedHaystack = index.canonicalText.replace(/\s+/g, "");
+ }
+ const strippedHaystack = index._strippedHaystack;
+ const skipTable = index._wsSkipTable;
+ const matches = [];
   let from = 0;
   while (from <= strippedHaystack.length - strippedNeedle.length) {
     const strippedStart = strippedHaystack.indexOf(strippedNeedle, from);
@@ -471,11 +468,12 @@ export function findMatchesFuzzy(index, query, maxEditDist, options = {}) {
   if (options.fuzzy === false) return [];
   const needle = normalizeSearchQuery(query);
   if (!index || !needle || needle.length > 64) return [];
-  if (!index._wsSkipTable) {
-    index._wsSkipTable = buildWhitespaceSkipTable(index.canonicalText);
-  }
-  const strippedHaystack = index.canonicalText.replace(/\s+/g, "");
-  const strippedNeedle = needle.replace(/\s+/g, "");
+ if (!index._wsSkipTable) {
+ index._wsSkipTable = buildWhitespaceSkipTable(index.canonicalText);
+ index._strippedHaystack = index.canonicalText.replace(/\s+/g, "");
+ }
+ const strippedHaystack = index._strippedHaystack;
+ const strippedNeedle = needle.replace(/\s+/g, "");
   const skipTable = index._wsSkipTable;
   const results = fuzzySearch(strippedHaystack, strippedNeedle, maxEditDist);
   return results

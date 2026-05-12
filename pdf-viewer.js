@@ -135,32 +135,35 @@ function createPageSlots() {
 
 // Render canvas + text layer into a placeholder at a given scale
 async function renderPageContent(pageNum, scale) {
-  const slot = pageSlots.get(pageNum);
-  if (!slot) return;
+ const slot = pageSlots.get(pageNum);
+ if (!slot) return;
 
-  // Mark as rendered at this scale
-  slot.rendered = true;
-  slot.renderedScale = scale;
+ const page = await pdfDoc.getPage(pageNum);
+ const viewport = page.getViewport({ scale });
+ const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-  const page = await pdfDoc.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+ const canvas = document.createElement("canvas");
+ const ctx = canvas.getContext("2d");
+ canvas.width = Math.floor(viewport.width * dpr);
+ canvas.height = Math.floor(viewport.height * dpr);
+ canvas.style.width = `${viewport.width}px`;
+ canvas.style.height = `${viewport.height}px`;
+ ctx.scale(dpr, dpr);
+ await page.render({ canvasContext: ctx, viewport }).promise;
 
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  canvas.width = Math.floor(viewport.width * dpr);
-  canvas.height = Math.floor(viewport.height * dpr);
-  canvas.style.width = `${viewport.width}px`;
-  canvas.style.height = `${viewport.height}px`;
-  ctx.scale(dpr, dpr);
-  await page.render({ canvasContext: ctx, viewport }).promise;
+ const textDiv = document.createElement("div");
+ textDiv.className = "textLayer";
+ textDiv.style.setProperty("--scale-factor", viewport.scale);
 
-  const textDiv = document.createElement("div");
-  textDiv.className = "textLayer";
-  textDiv.style.setProperty("--scale-factor", viewport.scale);
+ // Check if scale changed while we were rendering — if so, discard
+ if (currentScale !== scale) {
+ slot.rendered = false;
+ slot.renderedScale = 0;
+ return;
+ }
 
-  // Check if scale changed while we were rendering — if so, discard
-  if (currentScale !== scale) return;
+ slot.rendered = true;
+ slot.renderedScale = scale;
 
   // Clear old content and insert new
   slot.wrapper.innerHTML = "";
@@ -398,13 +401,21 @@ async function loadPdf() {
     await cacheBaseDims();
     renderedScale = currentScale;
     createPageSlots();
-  } catch (err) {
-    let msg = `Failed to load PDF: ${err.message}`;
-    if (pdfUrl.startsWith("file://")) {
-      msg +=
-        "<br><br>For local files, enable <b>Allow access to file URLs</b> in the extension settings (chrome://extensions).";
-    }
-    container.innerHTML = `<div id="loading-message">${msg}</div>`;
+ } catch (err) {
+ const div = document.createElement("div");
+ div.id = "loading-message";
+ div.textContent = `Failed to load PDF: ${err.message}`;
+ if (pdfUrl.startsWith("file://")) {
+ div.appendChild(document.createElement("br"));
+ div.appendChild(document.createElement("br"));
+ const b = document.createElement("b");
+ b.textContent = "Allow access to file URLs";
+ div.appendChild(document.createTextNode("For local files, enable "));
+ div.appendChild(b);
+ div.appendChild(document.createTextNode(" in the extension settings (chrome://extensions)."));
+ }
+ container.innerHTML = "";
+ container.appendChild(div);
   }
 }
 
@@ -494,19 +505,19 @@ function findPageNumAtPoint(clientX, clientY, target = null) {
 }
 
 function selectDomRanges(ranges) {
-  if (!ranges || ranges.length === 0) return false;
-  const first = ranges[0];
-  const last = ranges[ranges.length - 1];
-  const sel = window.getSelection();
-  if (!sel) return false;
+ if (!ranges || ranges.length === 0) return false;
+ const first = ranges[0];
+ const sel = window.getSelection();
+ if (!sel) return false;
 
-  const range = document.createRange();
-  try {
-    range.setStart(first.node, first.startOffset);
-    range.setEnd(last.node, last.endOffset);
-  } catch {
-    return false;
-  }
+ // Use only the first range to avoid over-selecting across non-contiguous nodes
+ const range = document.createRange();
+ try {
+ range.setStart(first.node, first.startOffset);
+ range.setEnd(first.node, first.endOffset);
+ } catch {
+ return false;
+ }
 
   sel.removeAllRanges();
   sel.addRange(range);
