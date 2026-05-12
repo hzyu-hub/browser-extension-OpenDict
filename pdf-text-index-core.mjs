@@ -262,7 +262,16 @@ export function collectTextRunsFromTextLayer(textLayer) {
 
     const isMultiLine = rect.height > estimatedLineHeight * 1.4;
 
-    if (!isMultiLine) {
+    // Detect single-line nodes with suspicious internal gaps (e.g., table
+    // cells where PDF.js renders "Name" and "Yu" in the same <span> with a
+    // large visual gap between them).  If the node's width is much larger
+    // than expected for its character count, we need per-character measurement
+    // to detect and split at the gap.
+    const fontSize = estimatedLineHeight / 1.4;
+    const expectedWidth = fontSize * 0.6 * text.length; // rough average char width
+    const hasSuspiciousGap = !isMultiLine && text.length > 1 && rect.width > expectedWidth * 2;
+
+    if (!isMultiLine && !hasSuspiciousGap) {
       // Single-line fast path — store wrapper-relative rect as before
       runs.push({
         text,
@@ -312,7 +321,9 @@ export function collectTextRunsFromTextLayer(textLayer) {
     range.detach?.();
 
     // Group consecutive characters that share the same visual line
-    // (midpoints within 65% of line height of each other)
+    // (midpoints within 65% of line height of each other) AND don't have
+    // a large horizontal gap between them (which indicates separate table
+    // cells or distant words rendered in the same text node).
     const groups = [];
     let currentGroup = [charRects[0]];
     for (let i = 1; i < charRects.length; i++) {
@@ -321,12 +332,20 @@ export function collectTextRunsFromTextLayer(textLayer) {
       const prevMid = (prev.top + prev.bottom) / 2;
       const currMid = (curr.top + curr.bottom) / 2;
       const h = Math.max(prev.height, curr.height, 1);
-      if (Math.abs(currMid - prevMid) <= h * 0.65) {
-        currentGroup.push(curr);
-      } else {
+      // Split on vertical line change
+      if (Math.abs(currMid - prevMid) > h * 0.65) {
         groups.push(currentGroup);
         currentGroup = [curr];
+        continue;
       }
+      // Split on large horizontal gap (same threshold as shouldInsertSyntheticSpace)
+      const hGap = Math.max(0, curr.left - prev.right);
+      if (hGap > h * 0.45) {
+        groups.push(currentGroup);
+        currentGroup = [curr];
+        continue;
+      }
+      currentGroup.push(curr);
     }
     if (currentGroup.length) groups.push(currentGroup);
 

@@ -786,6 +786,47 @@ test("table row: large gap separates 'Student ID' from '0472792'", () => {
   assert.equal(ranges[0].endOffset, 7); // "Student" is 7 chars
 });
 
+test("table row: pure-alphabetic words with large gap are separated", () => {
+  // Simulates the bug: PDF.js renders "Name" and "Yu" in the same table row
+  // as separate runs (after collectTextRunsFromTextLayer splits them at the
+  // horizontal gap).  Both are pure alphabetic — no letter↔digit boundary.
+  const nodeA = { text: "Name" };
+  const nodeB = { text: "Yu" };
+  const runA = {
+    text: "Name",
+    node: nodeA,
+    rect: { left: 10, right: 50, top: 50, bottom: 64, width: 40, height: 14 },
+  };
+  // Large gap: 50 → 400 = 350px gap, threshold is 14*0.45=6.3 — well exceeded
+  const runB = {
+    text: "Yu",
+    node: nodeB,
+    rect: { left: 400, right: 420, top: 50, bottom: 64, width: 20, height: 14 },
+  };
+  const index = buildTextIndexFromRuns([runA, runB]);
+
+  // Synthetic space should be inserted between "name" and "yu"
+  assert.equal(index.canonicalText, "name yu",
+    "large gap should insert synthetic space between pure-alphabetic runs");
+
+  // Double-clicking on 'N' (charIndex 0) should select only "name"
+  const bounds = expandToWordBoundaries(index.canonicalText, 0);
+  assert.ok(bounds, "should find word boundaries");
+  assert.equal(bounds.start, 0);
+  assert.equal(bounds.end, 4);
+  assert.equal(index.canonicalText.slice(bounds.start, bounds.end), "name");
+
+  // Double-clicking on 'y' (charIndex 5) should select only "yu"
+  const boundsYu = expandToWordBoundaries(index.canonicalText, 5);
+  assert.ok(boundsYu, "should find word boundaries for 'yu'");
+  assert.equal(index.canonicalText.slice(boundsYu.start, boundsYu.end), "yu");
+
+  // buildDomRangesFromCanonicalRange should return only one entry for "name"
+  const ranges = buildDomRangesFromCanonicalRange(index, bounds.start, bounds.end);
+  assert.equal(ranges.length, 1, "should produce exactly one DOM range for 'Name'");
+  assert.equal(ranges[0].node, nodeA, "range should be in nodeA");
+});
+
 test("table row: no synthetic space causes spanning selection bug", () => {
   // If runs are in the SAME text node (PDF.js sometimes combines items),
   // there's no synthetic space insertion between them. Verify that the
