@@ -7,6 +7,7 @@ import {
   findTokenContaining,
   normalizeSearchQuery,
   normalizeCoarseText,
+  isCombiningMark,
 } from "../pdf-text-index-core.mjs";
 
 function run(text, left, right, top = 0, bottom = 10) {
@@ -136,4 +137,13 @@ test("normalizeCoarseText returns both joined and spaced versions", () => {
   assert.ok(r.spaced.includes("lowercase"));
   assert.ok(r.joined.length > 0);
   assert.ok(r.spaced.length > 0);
+});
+
+test("isCombiningMark detects combining diacritical marks", () => {
+  assert.ok(isCombiningMark(0x0301)); // COMBINING ACUTE ACCENT
+  assert.ok(isCombiningMark(0x0300)); // COMBINING GRAVE ACCENT
+  assert.ok(isCombiningMark(0x064B)); // Arabic fathatan
+  assert.ok(isCombiningMark(0x1DC0)); // Combining Diacritical Marks Supplement
+  assert.ok(!isCombiningMark(0x0041)); // LATIN CAPITAL LETTER A
+  assert.ok(!isCombiningMark(0x00E9)); // é (precomposed, not a combining mark)
 });

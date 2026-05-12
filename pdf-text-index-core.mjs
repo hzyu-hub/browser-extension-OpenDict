@@ -5,6 +5,31 @@ const SOFT_HYPHEN_RE = /\u00ad/g;
 const WHITESPACE_RE = /\s+/g;
 const WORD_FALLBACK_RE = /[\p{Script=Han}]+|[\p{Script=Hiragana}\p{Script=Katakana}]+|[\p{Script=Hangul}]+|[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
 
+export function isCombiningMark(cp) {
+  return (cp >= 0x0300 && cp <= 0x036F) || // Combining Diacritical Marks
+    (cp >= 0x0483 && cp <= 0x0489) || // Cyrillic combining
+    (cp >= 0x0591 && cp <= 0x05BD) || // Hebrew
+    (cp >= 0x05C1 && cp <= 0x05C2) ||
+    (cp >= 0x05C4 && cp <= 0x05C5) ||
+    (cp >= 0x05C7 && cp <= 0x05C7) ||
+    (cp >= 0x0610 && cp <= 0x061A) || // Arabic
+    (cp >= 0x064B && cp <= 0x065F) || // Arabic diacritics
+    (cp >= 0x0670 && cp <= 0x0670) || // Arabic superscript alif
+    (cp >= 0x06D6 && cp <= 0x06DC) ||
+    (cp >= 0x06DF && cp <= 0x06E4) ||
+    (cp >= 0x06E7 && cp <= 0x06E8) ||
+    (cp >= 0x06EA && cp <= 0x06ED) ||
+    (cp >= 0x093A && cp <= 0x093C) || // Devanagari
+    (cp >= 0x093E && cp <= 0x094F) ||
+    (cp >= 0x0951 && cp <= 0x0957) ||
+    (cp >= 0x0962 && cp <= 0x0963) ||
+    (cp >= 0x1AB0 && cp <= 0x1AFF) || // Combining Diacritical Marks Extended
+    (cp >= 0x1DC0 && cp <= 0x1DFF) || // Combining Diacritical Marks Supplement
+    (cp >= 0x20D0 && cp <= 0x20FF) || // Combining Diacritical Marks for Symbols
+    (cp >= 0xFE20 && cp <= 0xFE2F) || // Combining Half Marks
+    false;
+}
+
 export function normalizeSearchQuery(text) {
   return String(text || "")
     .normalize("NFKC")
