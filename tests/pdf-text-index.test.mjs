@@ -547,6 +547,89 @@ test("expandToWordBoundaries: Hangul is CJK single-char", () => {
 
 // --- Multi-line text node split (cross-line char rect bug fix) ---
 
+test("cross-line tight spacing: words on adjacent lines are separate tokens", () => {
+  // Simulates the bug: "particular" ends line 1, "focus" starts line 2.
+  // With tight line spacing (gap = 1px, height = 10px → gap/h = 0.1 < 0.2),
+  // the old shouldInsertSyntheticSpace would NOT insert a space, merging them
+  // into "particularfocus". Double-clicking "focus" would then select "particular".
+  const nodeA = { id: "nodeA" };
+  const nodeB = { id: "nodeB" };
+  const line1Run = {
+    text: "particular",
+    node: nodeA,
+    rect: { left: 50, right: 150, top: 0, bottom: 10, width: 100, height: 10 },
+  };
+  const line2Run = {
+    text: "focus",
+    node: nodeB,
+    // Tight spacing: top=11, so gap = 11 - 10 = 1px, which is 10% of h=10
+    rect: { left: 0, right: 50, top: 11, bottom: 21, width: 50, height: 10 },
+  };
+  const index = buildTextIndexFromRuns([line1Run, line2Run]);
+
+  // Verify a synthetic space separates the two words
+  assert.ok(
+    index.canonicalText.includes("particular focus"),
+    `expected "particular focus" but got "${index.canonicalText}"`
+  );
+
+  // "focus" should be its own token
+  const focusStart = index.canonicalText.indexOf("focus");
+  assert.ok(focusStart > 0, "focus should exist in canonical text");
+  const token = findTokenContaining(index, focusStart);
+  assert.ok(token, "should find a token containing 'focus'");
+  assert.equal(
+    index.canonicalText.slice(token.start, token.end),
+    "focus",
+    "token should be exactly 'focus', not merged with 'particular'"
+  );
+
+  // Click in the middle of "focus" on line 2 (y=16 is centered in 11-21)
+  const charIdx = findCharIndexAtPoint(index, 25, 16);
+  assert.ok(charIdx >= 0, "should find a char on line 2");
+  const clickedChar = index.chars[charIdx];
+  assert.ok(
+    clickedChar.rect.top >= 11,
+    `clicked char should be on line 2 (top=${clickedChar.rect.top})`
+  );
+
+  // The DOM range for "focus" should reference nodeB
+  const ranges = buildDomRangesFromCanonicalRange(index, token.start, token.end);
+  assert.equal(ranges.length, 1, "should be a single DOM range");
+  assert.equal(ranges[0].node, nodeB, "range should reference nodeB (line 2)");
+});
+
+test("cross-line overlapping rects: words still separate tokens", () => {
+  // Even more extreme: line rects overlap vertically (common with descenders)
+  const nodeA = { id: "nodeA" };
+  const nodeB = { id: "nodeB" };
+  const line1Run = {
+    text: "particular",
+    node: nodeA,
+    rect: { left: 50, right: 150, top: 0, bottom: 12, width: 100, height: 12 },
+  };
+  const line2Run = {
+    text: "focus",
+    node: nodeB,
+    // Overlapping: top=10 < bottom of line1=12
+    rect: { left: 0, right: 50, top: 10, bottom: 22, width: 50, height: 12 },
+  };
+  const index = buildTextIndexFromRuns([line1Run, line2Run]);
+
+  assert.ok(
+    index.canonicalText.includes("particular focus"),
+    `expected space between words but got "${index.canonicalText}"`
+  );
+
+  const focusStart = index.canonicalText.indexOf("focus");
+  const token = findTokenContaining(index, focusStart);
+  assert.equal(
+    index.canonicalText.slice(token.start, token.end),
+    "focus",
+    "token should be exactly 'focus'"
+  );
+});
+
 test("split multi-line runs: findCharIndexAtPoint selects line 2 char, not line 1", () => {
   // Simulate a text node "reasoning\nover" that was split into two sub-runs
   // by collectTextRunsFromTextLayer (one per visual line).

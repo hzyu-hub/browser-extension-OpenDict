@@ -88,11 +88,11 @@ function shouldInsertSyntheticSpace(prevRun, run) {
   if (!prevRun?.rect || !run?.rect) return false;
   const h = Math.max(rectHeight(prevRun.rect), rectHeight(run.rect), 1);
   if (!sameLine(prevRun.rect, run.rect)) {
-    const verticalGap = Math.max(
-      0,
-      Math.max(run.rect.top - prevRun.rect.bottom, prevRun.rect.top - run.rect.bottom),
-    );
-    return verticalGap > h * 0.2;
+    // Different visual lines always represent a word boundary — insert a
+    // synthetic space regardless of how small the vertical gap is.  The old
+    // threshold (verticalGap > h*0.2) failed for tight line-spacing, causing
+    // the last word of line N to merge with the first word of line N+1.
+    return true;
   }
   const gap = Math.max(0, run.rect.left - prevRun.rect.right);
   return gap > h * 0.45;
