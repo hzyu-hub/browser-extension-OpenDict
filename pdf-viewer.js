@@ -64,9 +64,13 @@ const downloadPdfBtn = document.getElementById("download-pdf");
 
 downloadPdfBtn.addEventListener("click", downloadOriginalPdf);
 
+// Store the raw PDF bytes once loaded so download always works
+let pdfRawData = null;
+
 function getPdfFilename(url) {
   try {
-    const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+    let name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+    if (name && !name.toLowerCase().endsWith(".pdf")) name += ".pdf";
     return name || "document.pdf";
   } catch {
     return "document.pdf";
@@ -74,13 +78,27 @@ function getPdfFilename(url) {
 }
 
 function downloadOriginalPdf() {
-  if (!pdfUrl) return;
+  if (!pdfRawData && !pdfUrl) return;
 
-  chrome.downloads.download({
-    url: pdfUrl,
-    filename: getPdfFilename(pdfUrl),
-    saveAs: true,
-  });
+  if (pdfRawData) {
+    // Use the already-loaded PDF data — guaranteed to be the actual PDF
+    const blob = new Blob([pdfRawData], { type: "application/pdf" });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = getPdfFilename(pdfUrl || "document.pdf");
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } else {
+    // Fallback: try direct download from URL
+    chrome.downloads.download({
+      url: pdfUrl,
+      filename: getPdfFilename(pdfUrl),
+      saveAs: true,
+    });
+  }
 }
 
 // --- PDF data fetching with CORS fallback ---
@@ -418,6 +436,7 @@ async function loadPdf() {
 
   try {
     const data = await fetchPdfData(pdfUrl);
+    pdfRawData = data; // Store for download button
     pdfDoc = await pdfjsLib.getDocument({ data }).promise;
 
     pageCountEl.textContent = pdfDoc.numPages;
