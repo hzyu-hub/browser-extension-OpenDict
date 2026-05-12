@@ -530,7 +530,7 @@ function findPageNumAtPoint(clientX, clientY, target = null) {
   return bestDist <= 24 ? bestPage : null;
 }
 
-function selectDomRanges(ranges) {
+function selectDomRanges(ranges, pageWrapper) {
  if (!ranges || ranges.length === 0) return false;
  const first = ranges[0];
  const last = ranges[ranges.length - 1];
@@ -547,7 +547,58 @@ function selectDomRanges(ranges) {
 
   sel.removeAllRanges();
   sel.addRange(range);
+
+  // Add a pixel-perfect overlay highlight using getClientRects() to avoid
+  // the visual misalignment between textLayer spans and canvas-rendered text.
+  // This is especially noticeable on short words (e.g. "in", "a", "to").
+  if (pageWrapper) {
+    showSelectionOverlay(range, pageWrapper);
+  }
+
   return true;
+}
+
+function clearSelectionOverlay() {
+  const existing = document.querySelectorAll(".od-selection-highlight");
+  existing.forEach((el) => el.remove());
+  // Restore native ::selection visibility
+  document.querySelectorAll(".textLayer.od-selection-active").forEach((el) => {
+    el.classList.remove("od-selection-active");
+  });
+}
+
+function showSelectionOverlay(range, pageWrapper) {
+  clearSelectionOverlay();
+  const wrapperRect = pageWrapper.getBoundingClientRect();
+  const rects = range.getClientRects();
+  if (!rects || rects.length === 0) return;
+
+  const container = document.createElement("div");
+  container.className = "od-selection-highlight";
+  container.setAttribute("data-od", "");
+
+  for (let i = 0; i < rects.length; i++) {
+    const rect = rects[i];
+    if (rect.width === 0 && rect.height === 0) continue;
+    const div = document.createElement("div");
+    div.className = "od-selection-rect";
+    div.style.left = `${rect.left - wrapperRect.left}px`;
+    div.style.top = `${rect.top - wrapperRect.top}px`;
+    div.style.width = `${rect.width}px`;
+    div.style.height = `${rect.height}px`;
+    container.appendChild(div);
+  }
+
+  if (container.children.length > 0) {
+    const textLayer = pageWrapper.querySelector(".textLayer");
+    if (textLayer) {
+      // Suppress native ::selection to avoid double-highlight with misalignment
+      textLayer.classList.add("od-selection-active");
+      pageWrapper.insertBefore(container, textLayer);
+    } else {
+      pageWrapper.appendChild(container);
+    }
+  }
 }
 
 function selectWordAtPoint(clientX, clientY, target = null) {
@@ -574,8 +625,9 @@ function selectWordAtPoint(clientX, clientY, target = null) {
     wordEnd = bounds.end;
   }
 
+  const slot = pageSlots.get(pageNum);
   const ranges = buildDomRangesFromCanonicalRange(index, wordStart, wordEnd);
-  return selectDomRanges(ranges);
+  return selectDomRanges(ranges, slot?.wrapper || null);
 }
 
 container.addEventListener("dblclick", (e) => {
@@ -585,6 +637,12 @@ container.addEventListener("dblclick", (e) => {
     e.preventDefault();
   }
 }, true);
+
+// Clear the selection overlay when the user clicks (non-dblclick) or starts
+// a new selection elsewhere.
+container.addEventListener("mousedown", () => {
+  clearSelectionOverlay();
+});
 
 // --- In-document search (Ctrl+F) ---
 // Search and double-click selection share one canonical per-page text model.

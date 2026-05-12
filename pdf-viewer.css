@@ -245,6 +245,32 @@ body {
   background: rgba(0, 100, 200, 0.3);
 }
 
+/* When a pixel-perfect selection overlay is active, suppress the native
+   ::selection highlight to avoid double-rendering with misalignment. */
+.textLayer.od-selection-active ::selection {
+  background: transparent;
+}
+
+/* --- Double-click word selection overlay ---
+   Uses the same getClientRects() technique as search highlights for
+   pixel-perfect alignment with canvas text. Fixes partial highlight
+   coverage on short words (e.g. "in", "a", "to"). */
+
+.od-selection-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.od-selection-highlight > .od-selection-rect {
+  position: absolute;
+  pointer-events: none;
+  background-color: rgba(0, 100, 200, 0.3);
+  border-radius: 2px;
+}
+
 /* --- Loading / error message --- */
 
 #loading-message {
