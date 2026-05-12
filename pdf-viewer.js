@@ -800,13 +800,118 @@ function onPageTextLayerRendered(pageNum) {
   if (index) pageTextCache.set(pageNum, index.canonicalText);
 
   if (!searchBar.hidden && searchInput.value.trim()) {
-    runSearchProgressive(searchInput.value.trim());
+    const oldMatchId = currentMatchId;
+    reSearchSinglePage(pageNum, searchInput.value.trim());
+    const newIdx = findMatchByIdentity(searchMatches, oldMatchId);
+    if (newIdx >= 0) {
+      searchCurrentIdx = newIdx;
+    } else {
+      navigateToNearestMatch(pageNum, oldMatchId);
+    }
+    refreshHighlights();
+    updateSearchCount();
     return;
   }
 
   if (searchMatches.length === 0) return;
   if (!searchMatches.some((m) => m.page === pageNum)) return;
   refreshHighlights();
+}
+
+function reSearchSinglePage(pageNum, query) {
+  // Remove existing matches for this page
+  searchMatches = searchMatches.filter(m => m.page !== pageNum);
+
+  const needle = normalizeSearchQuery(query);
+  if (!needle) return;
+
+  const maxEditDist = Math.min(3, Math.floor(needle.length * 0.2));
+  const index = getPageTextIndex(pageNum);
+
+  if (index) {
+    let results = findMatchesInIndex(index, needle);
+    let matchType = "exact";
+
+    if (results.length === 0) {
+      results = findMatchesWhitespaceTolerant(index, needle);
+      matchType = "whitespace";
+    }
+
+    if (results.length === 0) {
+      results = findMatchesFuzzy(index, query, maxEditDist);
+      matchType = "approximate";
+    }
+
+    for (const m of results) {
+      searchMatches.push({
+        page: pageNum,
+        start: m.start,
+        end: m.end,
+        type: m.type || matchType,
+        source: "canonical",
+        ...(m.editDistance !== undefined ? { editDistance: m.editDistance, score: m.score } : {})
+      });
+    }
+  } else {
+    const cached = pageTextCache.get(pageNum);
+    if (cached) {
+      const haystacks =
+        typeof cached === "string" ? [cached] : [cached?.joined, cached?.spaced].filter(Boolean);
+      for (const haystack of haystacks) {
+        let from = 0;
+        while (from <= haystack.length - needle.length) {
+          const start = haystack.indexOf(needle, from);
+          if (start < 0) break;
+          searchMatches.push({ page: pageNum, start, end: start + needle.length, type: "exact", source: "coarse" });
+          from = start + needle.length;
+        }
+      }
+    }
+  }
+
+  searchMatches.sort((a, b) => a.page - b.page || a.start - b.start);
+}
+
+function navigateToNearestMatch(pageNum, oldMatchId) {
+  if (!oldMatchId || searchMatches.length === 0) {
+    if (searchMatches.length > 0) {
+      searchCurrentIdx = 0;
+      jumpToMatch(0);
+    } else {
+      searchCurrentIdx = -1;
+    }
+    return;
+  }
+
+  // Find the match closest to where the old match was
+  let bestIdx = -1;
+  let bestDist = Infinity;
+
+  for (let i = 0; i < searchMatches.length; i++) {
+    const m = searchMatches[i];
+    const pageDist = Math.abs(m.page - oldMatchId.page);
+    const offsetDist = pageDist === 0 ? Math.abs(m.start - oldMatchId.start) : 0;
+    const dist = pageDist * 100000 + offsetDist;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+
+  if (bestIdx >= 0) {
+    searchCurrentIdx = bestIdx;
+    flashCurrentMatch();
+  } else {
+    searchCurrentIdx = -1;
+  }
+}
+
+function flashCurrentMatch() {
+  if (searchCurrentIdx < 0 || searchCurrentIdx >= searchMatches.length) return;
+  refreshHighlights();
+  const m = searchMatches[searchCurrentIdx];
+  scrollToPage(m.page);
+  updateSearchCount();
 }
 
 function jumpToMatch(idx) {
