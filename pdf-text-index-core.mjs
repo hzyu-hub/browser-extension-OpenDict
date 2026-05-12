@@ -227,6 +227,7 @@ export function buildTextIndexFromRuns(runs, options = {}) {
 export function collectTextRunsFromTextLayer(textLayer) {
   if (!textLayer || typeof document === "undefined") return [];
   const runs = [];
+  const wrapperRect = textLayer.getBoundingClientRect();
   const walker = document.createTreeWalker(textLayer, NodeFilter.SHOW_TEXT);
   let node;
   while ((node = walker.nextNode())) {
@@ -242,13 +243,26 @@ export function collectTextRunsFromTextLayer(textLayer) {
     if (!rect || (rect.width === 0 && rect.height === 0)) {
       rect = node.parentElement?.getBoundingClientRect?.() || null;
     }
+    // Store rect relative to the textLayer wrapper so it doesn't go stale on scroll
+    if (rect) {
+      rect = {
+        left: rect.left - wrapperRect.left,
+        right: rect.right - wrapperRect.left,
+        top: rect.top - wrapperRect.top,
+        bottom: rect.bottom - wrapperRect.top,
+        width: rect.width,
+        height: rect.height,
+      };
+    }
     runs.push({ text, node, rect });
   }
   return runs;
 }
 
 export function buildTextIndexFromTextLayer(textLayer, options = {}) {
- return buildTextIndexFromRuns(collectTextRunsFromTextLayer(textLayer), options);
+ const index = buildTextIndexFromRuns(collectTextRunsFromTextLayer(textLayer), options);
+ index._textLayer = textLayer;
+ return index;
 }
 
 function isCJK(cp) {
@@ -389,6 +403,88 @@ export function findTokenContaining(index, canonicalIndex) {
   return index.tokens.find((t) => t.start <= canonicalIndex && canonicalIndex < t.end) || null;
 }
 
+/**
+ * Expand from a character index to word boundaries in canonical text.
+ * - Stops at whitespace and common punctuation.
+ * - CJK characters are treated as single-char words.
+ * - Combining marks are kept attached to their base character.
+ * Returns { start, end } (end is exclusive) or null if charIndex is out of range.
+ */
+export function expandToWordBoundaries(text, charIndex) {
+  if (!text || charIndex < 0 || charIndex >= text.length) return null;
+
+  const cp = text.codePointAt(charIndex);
+  const ch = String.fromCodePoint(cp);
+
+  // Whitespace: no word to select
+  if (/\s/.test(ch)) return null;
+
+  // Punctuation: no word to select
+  if (isWordBoundaryPunct(cp)) return null;
+
+  // CJK: each character is its own word
+  if (isCJK(cp)) {
+    return { start: charIndex, end: charIndex + ch.length };
+  }
+
+  // Expand left
+  let start = charIndex;
+  while (start > 0) {
+    const prevCp = text.codePointAt(start - 1);
+    // Handle surrogate pairs: step back 2 if we're at a low surrogate
+    let prevLen = 1;
+    if (start >= 2) {
+      const possibleHighSurrogate = text.charCodeAt(start - 2);
+      if (possibleHighSurrogate >= 0xD800 && possibleHighSurrogate <= 0xDBFF) {
+        prevLen = 2;
+      }
+    }
+    const actualCp = prevLen === 2 ? text.codePointAt(start - 2) : prevCp;
+    const actualLen = String.fromCodePoint(actualCp).length;
+
+    if (isCombiningMark(actualCp)) {
+      start -= actualLen;
+      continue;
+    }
+    if (isCJK(actualCp) || /\s/.test(String.fromCodePoint(actualCp)) || isWordBoundaryPunct(actualCp)) {
+      break;
+    }
+    start -= actualLen;
+  }
+
+  // Expand right
+  let end = charIndex + ch.length;
+  while (end < text.length) {
+    const nextCp = text.codePointAt(end);
+    const nextCh = String.fromCodePoint(nextCp);
+    const nextLen = nextCh.length;
+
+    if (isCombiningMark(nextCp)) {
+      end += nextLen;
+      continue;
+    }
+    if (isCJK(nextCp) || /\s/.test(nextCh) || isWordBoundaryPunct(nextCp)) {
+      break;
+    }
+    end += nextLen;
+  }
+
+  // Include any trailing combining marks
+  while (end < text.length) {
+    const nextCp = text.codePointAt(end);
+    if (!isCombiningMark(nextCp)) break;
+    end += String.fromCodePoint(nextCp).length;
+  }
+
+  return start < end ? { start, end } : null;
+}
+
+function isWordBoundaryPunct(cp) {
+  // Common punctuation that should break words
+  const ch = String.fromCodePoint(cp);
+  return /[.,;:!?()[\]{}"'<>\/\\@#$%^&*~`|+=\u2010-\u2015\u2018-\u201F\u2026\u3001\u3002\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]/.test(ch);
+}
+
 export function buildDomRangesFromCanonicalRange(index, start, end) {
   const ranges = [];
   if (!index || start >= end) return ranges;
@@ -526,6 +622,13 @@ function distanceToRect(x, y, rect) {
 
 export function findCharIndexAtPoint(index, x, y, maxDistance = 8) {
   if (!index) return -1;
+  // Convert viewport-relative clientX/clientY to wrapper-relative coordinates
+  // to match the wrapper-relative rects stored at build time.
+  if (index._textLayer) {
+    const wr = index._textLayer.getBoundingClientRect();
+    x = x - wr.left;
+    y = y - wr.top;
+  }
   let best = null;
   let bestDist = Infinity;
   for (const ch of index.chars) {
