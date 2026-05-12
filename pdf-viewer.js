@@ -11,6 +11,7 @@ import {
   normalizeCoarseText,
   normalizeSearchQuery,
 } from "./pdf-text-index-core.mjs";
+import { loadFeatureFlags, getFlag, watchFeatureFlags } from "./pdf-feature-flags.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "./lib/pdfjs/pdf.worker.min.mjs";
 
@@ -580,7 +581,10 @@ function getPageTextIndex(pageNum) {
   if (pageTextIndexCache.has(pageNum)) return pageTextIndexCache.get(pageNum);
   const textLayer = getTextLayerForPage(pageNum);
   if (!textLayer) return null;
-  const index = buildTextIndexFromTextLayer(textLayer);
+  const index = buildTextIndexFromTextLayer(textLayer, {
+    nfkd: getFlag("opendict.search.nfkd"),
+    v2: getFlag("opendict.selection.v2"),
+  });
   index.page = pageNum;
   pageTextIndexCache.set(pageNum, index);
   return index;
@@ -620,7 +624,7 @@ async function* progressiveSearch(query, signal) {
       }
 
       if (results.length === 0) {
-        results = findMatchesFuzzy(index, query, maxEditDist);
+        results = findMatchesFuzzy(index, query, maxEditDist, { fuzzy: getFlag("opendict.search.fuzzy") });
         matchType = "approximate";
       }
 
@@ -846,13 +850,13 @@ function reSearchSinglePage(pageNum, query) {
       matchType = "whitespace";
     }
 
-    if (results.length === 0) {
-      results = findMatchesFuzzy(index, query, maxEditDist);
-      matchType = "approximate";
-    }
+  if (results.length === 0) {
+    results = findMatchesFuzzy(index, query, maxEditDist, { fuzzy: getFlag("opendict.search.fuzzy") });
+    matchType = "approximate";
+  }
 
-    for (const m of results) {
-      searchMatches.push({
+  for (const m of results) {
+    searchMatches.push({
         page: pageNum,
         start: m.start,
         end: m.end,
@@ -1024,3 +1028,6 @@ document.addEventListener("keydown", (e) => {
 // --- Init ---
 zoomLevelEl.textContent = `${Math.round(currentScale * 100)}%`;
 loadPdf();
+loadFeatureFlags().then(() => {
+  watchFeatureFlags();
+});
