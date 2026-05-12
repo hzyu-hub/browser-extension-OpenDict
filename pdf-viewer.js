@@ -5,10 +5,13 @@ import {
   buildTextIndexFromTextLayer,
   findCharIndexAtPoint,
   findMatchesInIndex,
+  findMatchesWhitespaceTolerant,
+  findMatchesFuzzy,
   findTokenContaining,
   normalizeCoarseText,
   normalizeSearchQuery,
 } from "./pdf-text-index-core.mjs";
+import { fuzzySearch, fuzzyScore } from "./pdf-search-fuzzy.mjs";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "./lib/pdfjs/pdf.worker.min.mjs";
 
@@ -716,7 +719,7 @@ function onPageTextLayerRendered(pageNum) {
   refreshHighlights();
 }
 
-function runSearch(query) {
+function runSearch(query, options = {}) {
   searchMatches = [];
   searchCurrentIdx = -1;
   clearSearchHighlights();
@@ -727,30 +730,116 @@ function runSearch(query) {
     return;
   }
 
+  const maxEditDist = Math.min(3, Math.floor(needle.length * 0.2));
+
+  // Tier 1: Exact match
+  let exactMatches = [];
   for (const [page, cached] of pageTextCache) {
     const index = getPageTextIndex(page);
     if (index) {
       pageTextCache.set(page, index.canonicalText);
       for (const m of findMatchesInIndex(index, needle)) {
-        searchMatches.push({ page, start: m.start, end: m.end });
+        exactMatches.push({ page, start: m.start, end: m.end, type: "exact", source: "canonical" });
       }
       continue;
     }
-
-    // cached can be a string (from index) or { joined, spaced } (from coarse extraction)
+    // Coarse text exact match
     const haystacks =
       typeof cached === "string"
         ? [cached]
         : [cached?.joined, cached?.spaced].filter(Boolean);
-
     for (const haystack of haystacks) {
       let from = 0;
       while (from <= haystack.length - needle.length) {
         const start = haystack.indexOf(needle, from);
         if (start < 0) break;
-        searchMatches.push({ page, start, end: start + needle.length });
+        exactMatches.push({ page, start, end: start + needle.length, type: "exact", source: "coarse" });
         from = start + needle.length;
       }
+    }
+  }
+
+  if (exactMatches.length > 0) {
+    searchMatches = exactMatches;
+  } else {
+    // Tier 2: Whitespace-tolerant
+    let wsMatches = [];
+    for (const [page] of pageTextCache) {
+      const index = getPageTextIndex(page);
+      if (index) {
+        for (const m of findMatchesWhitespaceTolerant(index, needle)) {
+          wsMatches.push({ page, start: m.start, end: m.end, type: "whitespace", source: "canonical" });
+        }
+      }
+    }
+    // Coarse-text whitespace-tolerant: strip ws from both, simple indexOf
+    for (const [page, cached] of pageTextCache) {
+      if (getPageTextIndex(page)) continue;
+      const haystacks =
+        typeof cached === "string"
+          ? [cached]
+          : [cached?.joined, cached?.spaced].filter(Boolean);
+      const strippedNeedleWs = needle.replace(/\s+/g, "");
+      for (const haystack of haystacks) {
+        const strippedHay = haystack.replace(/\s+/g, "");
+        let from = 0;
+        while (from <= strippedHay.length - strippedNeedleWs.length) {
+          const start = strippedHay.indexOf(strippedNeedleWs, from);
+          if (start < 0) break;
+          wsMatches.push({ page, start, end: start + strippedNeedleWs.length, type: "whitespace", source: "coarse" });
+          from = start + strippedNeedleWs.length;
+        }
+      }
+    }
+
+    if (wsMatches.length > 0) {
+      searchMatches = wsMatches;
+    } else if (options.fuzzy !== false && needle.length <= 64) {
+      // Tier 3: Fuzzy
+      let fuzzyMatches = [];
+      for (const [page] of pageTextCache) {
+        const index = getPageTextIndex(page);
+        if (index) {
+          for (const m of findMatchesFuzzy(index, query, maxEditDist)) {
+            fuzzyMatches.push({
+              page,
+              start: m.start,
+              end: m.end,
+              type: "approximate",
+              source: "canonical",
+              editDistance: m.editDistance,
+              score: m.score,
+            });
+          }
+        }
+      }
+      // Coarse-text fuzzy: run fuzzySearch on stripped coarse text
+      for (const [page, cached] of pageTextCache) {
+        if (getPageTextIndex(page)) continue;
+        const haystacks =
+          typeof cached === "string"
+            ? [cached]
+            : [cached?.joined, cached?.spaced].filter(Boolean);
+        const strippedNeedleFz = needle.replace(/\s+/g, "");
+        for (const haystack of haystacks) {
+          const strippedHay = haystack.replace(/\s+/g, "");
+          const fuzzyResults = fuzzySearch(strippedHay, strippedNeedleFz, maxEditDist);
+          for (const r of fuzzyResults) {
+            if (fuzzyScore(r.editDistance, strippedNeedleFz.length) >= 0.8) {
+              fuzzyMatches.push({
+                page,
+                start: r.start,
+                end: r.end,
+                type: "approximate",
+                source: "coarse",
+                editDistance: r.editDistance,
+                score: fuzzyScore(r.editDistance, strippedNeedleFz.length),
+              });
+            }
+          }
+        }
+      }
+      searchMatches = fuzzyMatches;
     }
   }
 
