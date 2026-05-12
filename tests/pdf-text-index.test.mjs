@@ -522,9 +522,10 @@ test("expandToWordBoundaries: out of range returns null", () => {
   assert.equal(expandToWordBoundaries(null, 0), null);
 });
 
-test("expandToWordBoundaries: digits are part of word", () => {
+test("expandToWordBoundaries: digits are separate from letters", () => {
   const text = "abc123 xyz";
-  assert.deepEqual(expandToWordBoundaries(text, 4), { start: 0, end: 6 }); // "abc123"
+  assert.deepEqual(expandToWordBoundaries(text, 4), { start: 3, end: 6 }); // "123" (clicking on digit)
+  assert.deepEqual(expandToWordBoundaries(text, 1), { start: 0, end: 3 }); // "abc" (clicking on letter)
 });
 
 test("expandToWordBoundaries: multiple punctuation boundaries", () => {
