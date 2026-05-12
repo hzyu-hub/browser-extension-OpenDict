@@ -537,22 +537,33 @@ function selectDomRanges(ranges, pageWrapper) {
  const sel = window.getSelection();
  if (!sel) return false;
 
- const range = document.createRange();
+ // Build a spanning Range for the Selection API (copy/paste).
+ // The native selection highlight is hidden by od-selection-active anyway.
+ const spanRange = document.createRange();
  try {
- range.setStart(first.node, first.startOffset);
- range.setEnd(last.node, last.endOffset);
+ spanRange.setStart(first.node, first.startOffset);
+ spanRange.setEnd(last.node, last.endOffset);
  } catch {
  return false;
  }
 
   sel.removeAllRanges();
-  sel.addRange(range);
+  sel.addRange(spanRange);
 
-  // Add a pixel-perfect overlay highlight using getClientRects() to avoid
-  // the visual misalignment between textLayer spans and canvas-rendered text.
-  // This is especially noticeable on short words (e.g. "in", "a", "to").
+  // Build per-entry ranges for the visual overlay to avoid highlighting
+  // unrelated text between distant DOM nodes (e.g., "Student" and "0472792"
+  // in the same table row but different spans with a large gap).
   if (pageWrapper) {
-    showSelectionOverlay(range, pageWrapper);
+    const perEntryRanges = [];
+    for (const entry of ranges) {
+      try {
+        const r = document.createRange();
+        r.setStart(entry.node, entry.startOffset);
+        r.setEnd(entry.node, entry.endOffset);
+        perEntryRanges.push(r);
+      } catch {}
+    }
+    showSelectionOverlay(perEntryRanges, pageWrapper);
   }
 
   return true;
@@ -567,26 +578,31 @@ function clearSelectionOverlay() {
   });
 }
 
-function showSelectionOverlay(range, pageWrapper) {
+function showSelectionOverlay(rangesOrRange, pageWrapper) {
   clearSelectionOverlay();
   const wrapperRect = pageWrapper.getBoundingClientRect();
-  const rects = range.getClientRects();
-  if (!rects || rects.length === 0) return;
+
+  // Accept either a single Range or an array of Ranges
+  const rangeList = Array.isArray(rangesOrRange) ? rangesOrRange : [rangesOrRange];
 
   const container = document.createElement("div");
   container.className = "od-selection-highlight";
   container.setAttribute("data-od", "");
 
-  for (let i = 0; i < rects.length; i++) {
-    const rect = rects[i];
-    if (rect.width === 0 && rect.height === 0) continue;
-    const div = document.createElement("div");
-    div.className = "od-selection-rect";
-    div.style.left = `${rect.left - wrapperRect.left}px`;
-    div.style.top = `${rect.top - wrapperRect.top}px`;
-    div.style.width = `${rect.width}px`;
-    div.style.height = `${rect.height}px`;
-    container.appendChild(div);
+  for (const range of rangeList) {
+    const rects = range.getClientRects();
+    if (!rects) continue;
+    for (let i = 0; i < rects.length; i++) {
+      const rect = rects[i];
+      if (rect.width === 0 && rect.height === 0) continue;
+      const div = document.createElement("div");
+      div.className = "od-selection-rect";
+      div.style.left = `${rect.left - wrapperRect.left}px`;
+      div.style.top = `${rect.top - wrapperRect.top}px`;
+      div.style.width = `${rect.width}px`;
+      div.style.height = `${rect.height}px`;
+      container.appendChild(div);
+    }
   }
 
   if (container.children.length > 0) {

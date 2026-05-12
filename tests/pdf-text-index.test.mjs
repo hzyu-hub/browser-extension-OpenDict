@@ -746,3 +746,76 @@ test("mixed-styling word: small gap due to font metrics does not split", () => {
   assert.equal(index.canonicalText, "advantage",
     "small gap (2px) should not trigger synthetic space on 12px line");
 });
+
+test("table row: large gap separates 'Student ID' from '0472792'", () => {
+  // Simulates a PDF table row where "Student ID" is on the left and "0472792"
+  // is on the far right with a large whitespace gap. The gap should trigger a
+  // synthetic space so expandToWordBoundaries stops at "student" and does NOT
+  // include "0472792".
+  const nodeA = { text: "Student ID" };
+  const nodeB = { text: "0472792" };
+  const runA = {
+    text: "Student ID",
+    node: nodeA,
+    rect: { left: 10, right: 100, top: 50, bottom: 64, width: 90, height: 14 },
+  };
+  // Large gap: 100 → 400 = 300px gap, threshold is 14*0.45=6.3 — well exceeded
+  const runB = {
+    text: "0472792",
+    node: nodeB,
+    rect: { left: 400, right: 470, top: 50, bottom: 64, width: 70, height: 14 },
+  };
+  const index = buildTextIndexFromRuns([runA, runB]);
+
+  // Synthetic space should be inserted between "id" and "0472792"
+  assert.equal(index.canonicalText, "student id 0472792",
+    "large gap should insert synthetic space between runs");
+
+  // Double-clicking on 'S' (charIndex 0) should select only "student"
+  const bounds = expandToWordBoundaries(index.canonicalText, 0);
+  assert.ok(bounds, "should find word boundaries");
+  assert.equal(bounds.start, 0);
+  assert.equal(bounds.end, 7);
+  assert.equal(index.canonicalText.slice(bounds.start, bounds.end), "student");
+
+  // buildDomRangesFromCanonicalRange should return only one entry in nodeA
+  const ranges = buildDomRangesFromCanonicalRange(index, bounds.start, bounds.end);
+  assert.equal(ranges.length, 1, "should produce exactly one DOM range for 'Student'");
+  assert.equal(ranges[0].node, nodeA, "range should be in nodeA");
+  assert.equal(ranges[0].startOffset, 0);
+  assert.equal(ranges[0].endOffset, 7); // "Student" is 7 chars
+});
+
+test("table row: no synthetic space causes spanning selection bug", () => {
+  // If runs are in the SAME text node (PDF.js sometimes combines items),
+  // there's no synthetic space insertion between them. Verify that the
+  // letter↔digit boundary in expandToWordBoundaries still prevents
+  // "student" from expanding into digits.
+  const node = { text: "Student ID0472792" };
+  const runA = {
+    text: "Student ID0472792",
+    node,
+    rect: { left: 10, right: 470, top: 50, bottom: 64, width: 460, height: 14 },
+  };
+  const index = buildTextIndexFromRuns([runA]);
+
+  // canonicalText should be "student id0472792" (space within the text node is preserved)
+  assert.equal(index.canonicalText, "student id0472792");
+
+  // Clicking on 'S' should select only "student" (stops at space)
+  const bounds = expandToWordBoundaries(index.canonicalText, 0);
+  assert.ok(bounds);
+  assert.equal(index.canonicalText.slice(bounds.start, bounds.end), "student");
+
+  // Clicking on 'i' of "id" — letter↔digit boundary stops before '0'
+  const boundsID = expandToWordBoundaries(index.canonicalText, 8);
+  assert.ok(boundsID);
+  assert.equal(index.canonicalText.slice(boundsID.start, boundsID.end), "id",
+    "letter↔digit boundary should prevent 'id' from expanding into '0472792'");
+
+  // Clicking on '0' should select only "0472792"
+  const boundsNum = expandToWordBoundaries(index.canonicalText, 10);
+  assert.ok(boundsNum);
+  assert.equal(index.canonicalText.slice(boundsNum.start, boundsNum.end), "0472792",
+    "digit group should be selected independently");
+});
