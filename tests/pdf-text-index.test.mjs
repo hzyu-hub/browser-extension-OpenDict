@@ -438,9 +438,9 @@ test("buildTokens v2: date pattern", () => {
 test("applyHyphenJoinHeuristic merges en-dash split tokens", () => {
   const tokens = [
     { text: "trans", start: 0, end: 5 },
-    { text: "lation", start: 7, end: 12 },
+    { text: "lation", start: 6, end: 12 },
   ];
-  // en-dash U+2013 between tokens
+  // en-dash U+2013 between tokens at position 5
   const result = applyHyphenJoinHeuristic(tokens, "trans\u2013lation");
   assert.equal(result.length, 1);
   assert.equal(result[0].text, "translation");
