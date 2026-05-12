@@ -196,6 +196,7 @@ body {
 
 .pdf-page-wrapper canvas {
   display: block;
+  pointer-events: none;
 }
 
 /* --- Text layer (transparent selectable overlay) --- */

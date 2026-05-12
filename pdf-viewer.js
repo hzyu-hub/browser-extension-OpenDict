@@ -3,6 +3,7 @@ import * as pdfjsLib from "./lib/pdfjs/pdf.min.mjs";
 import {
   buildDomRangesFromCanonicalRange,
   buildTextIndexFromTextLayer,
+  expandToWordBoundaries,
   findCharIndexAtPoint,
   findMatchesInIndex,
   findMatchesWhitespaceTolerant,
@@ -559,10 +560,21 @@ function selectWordAtPoint(clientX, clientY, target = null) {
   const charIndex = findCharIndexAtPoint(index, clientX, clientY);
   if (charIndex < 0) return false;
 
+  // Try token-based selection first (respects tokenizer rules)
   const token = findTokenContaining(index, charIndex);
-  if (!token) return false;
+  let wordStart, wordEnd;
+  if (token) {
+    wordStart = token.start;
+    wordEnd = token.end;
+  } else {
+    // Fallback: expand to word boundaries from the clicked char
+    const bounds = expandToWordBoundaries(index.canonicalText, charIndex);
+    if (!bounds) return false;
+    wordStart = bounds.start;
+    wordEnd = bounds.end;
+  }
 
-  const ranges = buildDomRangesFromCanonicalRange(index, token.start, token.end);
+  const ranges = buildDomRangesFromCanonicalRange(index, wordStart, wordEnd);
   return selectDomRanges(ranges);
 }
 
