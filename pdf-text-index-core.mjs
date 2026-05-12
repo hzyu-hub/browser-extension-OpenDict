@@ -312,6 +312,22 @@ export function resolveCanonicalToRaw(index, canonicalIdx) {
   return index.reverseOffsets[canonicalIdx];
 }
 
+export function buildWhitespaceSkipTable(canonicalText) {
+  let nonWsCount = 0;
+  for (let i = 0; i < canonicalText.length; i++) {
+    if (!isWhitespace(canonicalText[i])) nonWsCount++;
+  }
+  const TableType = nonWsCount <= 65535 ? Uint16Array : Uint32Array;
+  const table = new TableType(nonWsCount);
+  let sIdx = 0;
+  for (let cIdx = 0; cIdx < canonicalText.length; cIdx++) {
+    if (!isWhitespace(canonicalText[cIdx])) {
+      table[sIdx++] = cIdx;
+    }
+  }
+  return table;
+}
+
 export function findMatchesInIndex(index, query) {
   const needle = normalizeSearchQuery(query);
   if (!index || !needle) return [];

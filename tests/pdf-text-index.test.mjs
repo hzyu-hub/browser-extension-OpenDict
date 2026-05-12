@@ -9,6 +9,7 @@ import {
   normalizeCoarseText,
   isCombiningMark,
   resolveCanonicalToRaw,
+  buildWhitespaceSkipTable,
 } from "../pdf-text-index-core.mjs";
 
 function run(text, left, right, top = 0, bottom = 10) {
@@ -213,4 +214,30 @@ test("resolveCanonicalToRaw returns -1 for out-of-bounds", () => {
   assert.equal(resolveCanonicalToRaw(index, -1), -1);
   assert.equal(resolveCanonicalToRaw(index, 99), -1);
   assert.equal(resolveCanonicalToRaw(null, 0), -1);
+});
+
+test("buildWhitespaceSkipTable maps stripped offsets to canonical offsets", () => {
+  const table = buildWhitespaceSkipTable("a b c");
+  assert.ok(table instanceof Uint16Array || table instanceof Uint32Array);
+  assert.equal(table.length, 3);
+  assert.equal(table[0], 0); // 'a' at canonical 0
+  assert.equal(table[1], 2); // 'b' at canonical 2
+  assert.equal(table[2], 4); // 'c' at canonical 4
+});
+
+test("buildWhitespaceSkipTable uses Uint16Array for small pages", () => {
+  const table = buildWhitespaceSkipTable("hello world");
+  assert.ok(table instanceof Uint16Array);
+});
+
+test("skip-table handles leading whitespace", () => {
+  const table = buildWhitespaceSkipTable(" abc");
+  assert.equal(table.length, 3);
+  assert.equal(table[0], 1); // 'a' at canonical index 1
+});
+
+test("skip-table handles trailing whitespace", () => {
+  const table = buildWhitespaceSkipTable("abc ");
+  assert.equal(table.length, 3);
+  assert.equal(table[2], 2); // 'c' at canonical index 2
 });
