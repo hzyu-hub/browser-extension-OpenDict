@@ -560,6 +560,12 @@ let searchTextExtracted = false;
 // Each match: { page, start, end } — offsets in that page's canonical/coarse text.
 let searchMatches = [];
 let searchCurrentIdx = -1;
+let currentMatchId = null; // { page, start, end }
+
+function findMatchByIdentity(matches, id) {
+  if (!id) return -1;
+  return matches.findIndex(m => m.page === id.page && m.start === id.start && m.end === id.end);
+}
 
 function getTextLayerForPage(pageNum) {
   const slot = pageSlots.get(pageNum);
@@ -856,6 +862,7 @@ function jumpToMatch(idx) {
   if (idx < 0 || idx >= searchMatches.length) return;
   searchCurrentIdx = idx;
   const m = searchMatches[idx];
+  currentMatchId = { page: m.page, start: m.start, end: m.end };
   scrollToPage(m.page);
   updateSearchCount();
   // Wait two frames so lazy rendering can schedule; onPageTextLayerRendered will
