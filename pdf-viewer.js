@@ -46,6 +46,9 @@ let rerenderTimer = null;
 // pageNum → canonical text index built from the rendered PDF.js textLayer.
 const pageTextIndexCache = new Map();
 
+// Stores the currently selected text for clipboard copy (replaces native Selection)
+let odSelectedText = "";
+
 // Show filename in toolbar and page title
 if (pdfUrl) {
   try {
@@ -551,23 +554,24 @@ function findPageNumAtPoint(clientX, clientY, target = null) {
 
 function selectDomRanges(ranges, pageWrapper) {
  if (!ranges || ranges.length === 0) return false;
- const first = ranges[0];
- const last = ranges[ranges.length - 1];
- const sel = window.getSelection();
- if (!sel) return false;
 
- // Build a spanning Range for the Selection API (copy/paste).
- // The native selection highlight is hidden by od-selection-active anyway.
- const spanRange = document.createRange();
- try {
- spanRange.setStart(first.node, first.startOffset);
- spanRange.setEnd(last.node, last.endOffset);
- } catch {
- return false;
- }
+  // Clear any native selection to prevent browser-rendered highlights that
+  // bleed across transformed PDF.js spans (the "Name+Yu" co-highlight bug).
+  const sel = window.getSelection();
+  if (sel) sel.removeAllRanges();
 
-  sel.removeAllRanges();
-  sel.addRange(spanRange);
+  // Extract the selected text from the DOM ranges for clipboard support.
+  // We no longer create a native Selection — the overlay handles visuals.
+  let text = "";
+  for (const entry of ranges) {
+    try {
+      const r = document.createRange();
+      r.setStart(entry.node, entry.startOffset);
+      r.setEnd(entry.node, entry.endOffset);
+      text += r.toString();
+      r.detach?.();
+    } catch {}
+  }
 
   // Build per-entry ranges for the visual overlay to avoid highlighting
   // unrelated text between distant DOM nodes (e.g., "Student" and "0472792"
@@ -585,6 +589,9 @@ function selectDomRanges(ranges, pageWrapper) {
     showSelectionOverlay(perEntryRanges, pageWrapper);
   }
 
+  // Set AFTER showSelectionOverlay (which calls clearSelectionOverlay → resets odSelectedText)
+  odSelectedText = text;
+
   return true;
 }
 
@@ -595,6 +602,7 @@ function clearSelectionOverlay() {
   document.querySelectorAll(".textLayer.od-selection-active").forEach((el) => {
     el.classList.remove("od-selection-active");
   });
+  odSelectedText = "";
 }
 
 function showSelectionOverlay(rangesOrRange, pageWrapper) {
@@ -723,6 +731,14 @@ container.addEventListener("dblclick", (e) => {
 // a new selection elsewhere.
 container.addEventListener("mousedown", () => {
   clearSelectionOverlay();
+});
+
+// Handle copy (Ctrl+C / Cmd+C) using our stored selection text instead of
+// native Selection, which we no longer create to avoid highlight bleed.
+document.addEventListener("copy", (e) => {
+  if (!odSelectedText) return; // let default copy behavior through
+  e.preventDefault();
+  e.clipboardData.setData("text/plain", odSelectedText);
 });
 
 // --- In-document search (Ctrl+F) ---
