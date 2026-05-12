@@ -1042,7 +1042,14 @@ function jumpToMatch(idx) {
   updateSearchCount();
   // Wait two frames so lazy rendering can schedule; onPageTextLayerRendered will
   // rerun search with precise DOM offsets if the target page was not rendered.
-  requestAnimationFrame(() => requestAnimationFrame(refreshHighlights));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    refreshHighlights();
+    // Scroll the current highlight into view within the container
+    const hit = container.querySelector(".opendict-search-hit-current");
+    if (hit) {
+      hit.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }));
 }
 
 function updateSearchCount(progressBatch = null) {
