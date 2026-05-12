@@ -57,6 +57,31 @@ if (pdfUrl) {
   }
 }
 
+// --- Download original PDF ---
+
+const downloadPdfBtn = document.getElementById("download-pdf");
+
+downloadPdfBtn.addEventListener("click", downloadOriginalPdf);
+
+function getPdfFilename(url) {
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+    return name || "document.pdf";
+  } catch {
+    return "document.pdf";
+  }
+}
+
+function downloadOriginalPdf() {
+  if (!pdfUrl) return;
+
+  chrome.downloads.download({
+    url: pdfUrl,
+    filename: getPdfFilename(pdfUrl),
+    saveAs: true,
+  });
+}
+
 // --- PDF data fetching with CORS fallback ---
 
 async function fetchPdfData(url) {
