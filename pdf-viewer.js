@@ -436,7 +436,7 @@ async function loadPdf() {
 
   try {
     const data = await fetchPdfData(pdfUrl);
-    pdfRawData = data; // Store for download button
+    pdfRawData = data.slice(0); // Keep a copy — pdf.js transfers/detaches the original
     pdfDoc = await pdfjsLib.getDocument({ data }).promise;
 
     pageCountEl.textContent = pdfDoc.numPages;
