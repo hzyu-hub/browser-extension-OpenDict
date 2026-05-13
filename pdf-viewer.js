@@ -49,6 +49,9 @@ const pageTextIndexCache = new Map();
 // Stores the currently selected text for clipboard copy (replaces native Selection)
 let odSelectedText = "";
 
+// Parsed translation shortcut (matches content.js logic)
+let odTransShortcut = { ctrl: true, alt: false, shift: false, meta: false, key: "q" };
+
 // Show filename in toolbar and page title
 if (pdfUrl) {
   try {
@@ -1212,7 +1215,96 @@ document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
     e.preventDefault();
     openSearch();
+    return;
   }
+
+  // Translation shortcut: translate the current overlay selection
+  if (e.altKey === odTransShortcut.alt &&
+      e.ctrlKey === odTransShortcut.ctrl &&
+      e.shiftKey === odTransShortcut.shift &&
+      e.metaKey === odTransShortcut.meta &&
+      (e.key.toLowerCase() === odTransShortcut.key || e.code.toLowerCase() === `key${odTransShortcut.key}`)) {
+    e.preventDefault();
+    if (!odSelectedText || odSelectedText.length > 200) return;
+    const overlay = container.querySelector(".od-selection-overlay");
+    const rect = overlay?.getBoundingClientRect();
+    const x = rect ? rect.left + rect.width / 2 : 200;
+    const y = rect ? rect.top : 200;
+    triggerPdfTranslation(odSelectedText, x, y);
+  }
+});
+
+// --- Translation popup (Ctrl+Q in PDF viewer) ---
+let pdfTransPopup = null;
+
+function removePdfTransPopup() {
+  if (pdfTransPopup) { pdfTransPopup.remove(); pdfTransPopup = null; }
+}
+
+function showPdfTransLoading(word, x, y) {
+  removePdfTransPopup();
+  const el = document.createElement("div");
+  el.className = "opendict-popup opendict-popup-loading";
+  el.innerHTML = `<div class="opendict-popup-word">${escapeHtml(word)}</div>
+    <div class="opendict-popup-loading-bar"><div class="opendict-popup-loading-fill"></div></div>`;
+  positionPdfTransPopup(el, x, y);
+  document.body.appendChild(el);
+  pdfTransPopup = el;
+}
+
+function showPdfTransResult(word, result, error) {
+  removePdfTransPopup();
+  const el = document.createElement("div");
+  el.className = "opendict-popup";
+  if (error || !result?.translation) {
+    el.innerHTML = `<div class="opendict-popup-word">${escapeHtml(word)}</div>
+      <div class="opendict-popup-error">${escapeHtml(error || "No translation found")}</div>`;
+  } else {
+    el.innerHTML = `<div class="opendict-popup-word">${escapeHtml(word)}</div>
+      <div class="opendict-popup-translation">${escapeHtml(result.translation)}</div>`;
+  }
+  positionPdfTransPopup(el, 0, 0);
+  // Re-position near the existing overlay if still present
+  const overlay = container.querySelector(".od-selection-overlay");
+  if (overlay) {
+    const r = overlay.getBoundingClientRect();
+    el.style.left = `${r.left + r.width / 2 - el.offsetWidth / 2}px`;
+    el.style.top = `${r.bottom + 8}px`;
+  }
+  document.body.appendChild(el);
+  pdfTransPopup = el;
+}
+
+function positionPdfTransPopup(el, x, y) {
+  el.style.position = "fixed";
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  el.style.zIndex = "100000";
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function triggerPdfTranslation(text, x, y) {
+  showPdfTransLoading(text, x, y);
+  chrome.runtime.sendMessage(
+    { type: "opendict-translate-request", text, context: "" },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        showPdfTransResult(text, null, "Extension error: " + chrome.runtime.lastError.message);
+        return;
+      }
+      showPdfTransResult(text, response, response?.error);
+    },
+  );
+}
+
+// Close popup on click outside
+document.addEventListener("mousedown", (e) => {
+  if (pdfTransPopup && !pdfTransPopup.contains(e.target)) removePdfTransPopup();
 });
 
 // --- Init ---
@@ -1221,3 +1313,34 @@ loadPdf();
 loadFeatureFlags().then(() => {
   watchFeatureFlags();
 });
+
+// Load and watch the translation shortcut from storage
+function parseShortcutForPdf(value) {
+  const raw = String(value || "Ctrl+Q").replace(/\s+/g, "");
+  const parts = raw.split("+").filter(Boolean);
+  const r = { ctrl: false, alt: false, shift: false, meta: false, key: "q" };
+  for (const p of parts) {
+    const low = p.toLowerCase();
+    if (low === "ctrl" || low === "control") r.ctrl = true;
+    else if (low === "alt") r.alt = true;
+    else if (low === "shift") r.shift = true;
+    else if (low === "meta" || low === "cmd" || low === "command") r.meta = true;
+    else r.key = low;
+  }
+  return r;
+}
+
+function loadTransShortcut() {
+  chrome.storage.sync.get("opendict_config", (data) => {
+    const cfg = data.opendict_config || {};
+    odTransShortcut = parseShortcutForPdf(cfg.triggerShortcut || "Ctrl+Q");
+  });
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync" || !changes.opendict_config) return;
+  const cfg = changes.opendict_config.newValue || {};
+  odTransShortcut = parseShortcutForPdf(cfg.triggerShortcut || "Ctrl+Q");
+});
+
+loadTransShortcut();

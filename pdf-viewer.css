@@ -388,6 +388,74 @@ body {
 }
 
 @keyframes od-match-flash {
-  0%   { outline: 3px solid #ff6600; outline-offset: 1px; }
+  0% { outline: 3px solid #ff6600; outline-offset: 1px; }
   100% { outline: transparent; outline-offset: 1px; }
+}
+
+/* --- Translation popup (Ctrl+Q in PDF viewer) --- */
+
+.opendict-popup {
+  position: fixed;
+  z-index: 100000;
+  width: 340px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #fff;
+  color: #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  animation: opendict-pdf-fadein 0.2s ease;
+}
+
+.opendict-popup-word {
+  font-weight: 600;
+  font-size: 15px;
+  padding: 10px 14px 6px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
+}
+
+.opendict-popup-translation {
+  padding: 8px 14px 12px;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+.opendict-popup-error {
+  padding: 8px 14px 12px;
+  color: #ea580c;
+  font-size: 13px;
+}
+
+.opendict-popup-loading {
+  /* narrower skeleton while waiting */
+}
+
+.opendict-popup-loading-bar {
+  height: 4px;
+  margin: 10px 14px 14px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.opendict-popup-loading-fill {
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: #0ea5e9;
+  animation: opendict-pdf-slide 1s ease-in-out infinite;
+}
+
+@keyframes opendict-pdf-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes opendict-pdf-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
 }
