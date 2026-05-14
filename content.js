@@ -774,6 +774,12 @@
     autoCloseTimer = setTimeout(removePopup, 30000);
   }
 
+  function getPdfViewerOverlaySelection() {
+    return document.documentElement
+      ?.getAttribute("data-opendict-pdf-selected-text")
+      ?.trim() || "";
+  }
+
   function isEditableElement(target) {
     if (!target) return false;
     const tag = target.tagName?.toLowerCase();
@@ -941,7 +947,7 @@
     if (!isShortcutMatched(e)) return;
 
     const currentSelection = window.getSelection()?.toString().trim();
-    const text = currentSelection || pendingSelection?.text;
+    const text = currentSelection || getPdfViewerOverlaySelection() || pendingSelection?.text;
     if (!text || text.length > 200) return;
 
     const context = pendingSelection?.context || "";
@@ -965,7 +971,7 @@
       // Triggered by browser-level commands API shortcut
       const sel = window.getSelection();
       const currentSelection = sel?.toString().trim();
-      const text = currentSelection || pendingSelection?.text;
+      const text = currentSelection || getPdfViewerOverlaySelection() || pendingSelection?.text;
       if (!text || text.length > 200) return;
 
       const context = pendingSelection?.context || "";

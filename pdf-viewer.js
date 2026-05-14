@@ -48,6 +48,16 @@ const pageTextIndexCache = new Map();
 
 // Stores the currently selected text for clipboard copy (replaces native Selection)
 let odSelectedText = "";
+const OD_PDF_SELECTED_TEXT_ATTR = "data-opendict-pdf-selected-text";
+
+function setPdfSelectedText(text) {
+  odSelectedText = text || "";
+  if (odSelectedText) {
+    document.documentElement.setAttribute(OD_PDF_SELECTED_TEXT_ATTR, odSelectedText);
+  } else {
+    document.documentElement.removeAttribute(OD_PDF_SELECTED_TEXT_ATTR);
+  }
+}
 
 // Parsed translation shortcut (matches content.js logic)
 let odTransShortcut = { ctrl: true, alt: false, shift: false, meta: false, key: "q" };
@@ -595,7 +605,7 @@ function selectDomRanges(ranges, pageWrapper) {
   }
 
   // Set AFTER showSelectionOverlay (which calls clearSelectionOverlay → resets odSelectedText)
-  odSelectedText = text;
+  setPdfSelectedText(text);
 
   return true;
 }
@@ -607,7 +617,7 @@ function clearSelectionOverlay() {
   document.querySelectorAll(".textLayer.od-selection-active").forEach((el) => {
     el.classList.remove("od-selection-active");
   });
-  odSelectedText = "";
+  setPdfSelectedText("");
 }
 
 function showSelectionOverlay(rangesOrRange, pageWrapper) {
