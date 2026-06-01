@@ -780,6 +780,13 @@
       ?.trim() || "";
   }
 
+  function getPdfOverlayPosition() {
+    const el = document.querySelector(".od-selection-highlight");
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.bottom + 4 };
+  }
+
   function isEditableElement(target) {
     if (!target) return false;
     const tag = target.tagName?.toLowerCase();
@@ -947,12 +954,14 @@
     if (!isShortcutMatched(e)) return;
 
     const currentSelection = window.getSelection()?.toString().trim();
-    const text = currentSelection || getPdfViewerOverlaySelection() || pendingSelection?.text;
+    const pdfOverlayText = !currentSelection ? getPdfViewerOverlaySelection() : "";
+    const text = currentSelection || pdfOverlayText || pendingSelection?.text;
     if (!text || text.length > 200) return;
 
+    const pdfPos = pdfOverlayText ? getPdfOverlayPosition() : null;
     const context = pendingSelection?.context || "";
-    const x = pendingSelection?.x ?? lastClickPos.x;
-    const y = pendingSelection?.y ?? lastClickPos.y;
+    const x = pdfPos?.x ?? pendingSelection?.x ?? lastClickPos.x;
+    const y = pdfPos?.y ?? pendingSelection?.y ?? lastClickPos.y;
 
     e.preventDefault();
     requestTranslate(text, context, x, y);
@@ -971,12 +980,14 @@
       // Triggered by browser-level commands API shortcut
       const sel = window.getSelection();
       const currentSelection = sel?.toString().trim();
-      const text = currentSelection || getPdfViewerOverlaySelection() || pendingSelection?.text;
+      const pdfOverlayText = !currentSelection ? getPdfViewerOverlaySelection() : "";
+      const text = currentSelection || pdfOverlayText || pendingSelection?.text;
       if (!text || text.length > 200) return;
 
+      const pdfPos = pdfOverlayText ? getPdfOverlayPosition() : null;
       const context = pendingSelection?.context || "";
-      const x = pendingSelection?.x ?? lastClickPos.x;
-      const y = pendingSelection?.y ?? lastClickPos.y;
+      const x = pdfPos?.x ?? pendingSelection?.x ?? lastClickPos.x;
+      const y = pdfPos?.y ?? pendingSelection?.y ?? lastClickPos.y;
 
       requestTranslate(text, context, x, y);
       pendingSelection = null;

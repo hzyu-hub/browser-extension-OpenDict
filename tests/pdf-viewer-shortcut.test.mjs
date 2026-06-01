@@ -20,8 +20,17 @@ test("PDF viewer exposes overlay-selected text through the DOM for injected cont
   assert.match(viewerJs, /setPdfSelectedText\(""\)/);
 });
 
-test("content script command trigger falls back to PDF viewer overlay selection", () => {
+test("PDF viewer does NOT have its own translation popup (content.js handles it)", () => {
+  assert.doesNotMatch(viewerJs, /triggerPdfTranslation/);
+  assert.doesNotMatch(viewerJs, /showPdfTransLoading/);
+  assert.doesNotMatch(viewerJs, /showPdfTransResult/);
+  assert.doesNotMatch(viewerJs, /pdfTransPopup/);
+  assert.doesNotMatch(viewerJs, /parseShortcutForPdf/);
+});
+
+test("content script reads PDF overlay selection and positions popup from overlay element", () => {
   assert.match(contentJs, /getPdfViewerOverlaySelection/);
   assert.match(contentJs, /\.getAttribute\("data-opendict-pdf-selected-text"\)/);
-  assert.match(contentJs, /currentSelection \|\| getPdfViewerOverlaySelection\(\) \|\| pendingSelection\?\.text/);
+  assert.match(contentJs, /getPdfOverlayPosition/);
+  assert.match(contentJs, /od-selection-highlight/);
 });
